@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "path": "/",
+      "title": "百家工程師登入／DG"
+    },
+    {
+      "path": "/dev/theme-lab",
+      "title": "樣式檢查"
+    },
+    {
+      "path": "/oauth/callback",
+      "title": "授權回呼"
+    }
+  ]
+}
