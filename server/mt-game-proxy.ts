@@ -1,3 +1,4 @@
+import {isMtRestrictedHtml} from '../shared/mt-access-page';
 import type { Express, Request, Response } from "express";
 import { randomBytes, createHash } from "node:crypto";
 import { Readable } from "node:stream";
@@ -208,7 +209,9 @@ export function rewriteMtHtml(source: string, ledgerKey?: string, upstreamOrigin
   let html = source.replace(/\b(src|href|action|poster)\s*=\s*(["'])(.*?)\2/gi, (_whole, name: string, quote: string, value: string) => `${name}=${quote}${mtProxyAssetUrl(value, upstreamOrigin)}${quote}`);
   html = rewriteMtAssetText(html, upstreamOrigin).replace(/<base\b[^>]*>/gi, "");
   const bootstrap = ledgerKey && /^mt\.session\.[a-f0-9]{32}$/.test(ledgerKey) ? MT_BOOTSTRAP.replace("pathPrefix:P}", `pathPrefix:P,ledgerKey:${JSON.stringify(ledgerKey)}}`) : MT_BOOTSTRAP;
-  const injection = `${bootstrap}<base href="${MT_GAME_PREFIX}/">${MT_CONSOLE_TAG}`;
+  const restricted=isMtRestrictedHtml(source);
+  const accessMarker='<script>Object.defineProperty(window,"__AUTOBAC_MT_ACCESS_RESTRICTED__",{value:true,writable:false,configurable:false});</script>';
+  const injection = `${bootstrap}<base href="${MT_GAME_PREFIX}/">${restricted?accessMarker:MT_CONSOLE_TAG}`;
   if (/<head(?:\s[^>]*)?>/i.test(html)) return html.replace(/<head(?:\s[^>]*)?>/i, (tag) => `${tag}${injection}`);
   if (/<html(?:\s[^>]*)?>/i.test(html)) return html.replace(/<html(?:\s[^>]*)?>/i, (tag) => `${tag}<head>${injection}</head>`);
   return `<!doctype html><head>${injection}</head>${html}`;

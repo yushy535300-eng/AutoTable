@@ -1,3 +1,4 @@
+import { readDgSceneNodes, dgSceneNodeVisible } from './dg-scene';
 export type DgMobileNativeReadiness =
   | "waiting-stage"
   | "waiting-multi-table"
@@ -42,26 +43,6 @@ function safeProperty(value: unknown, key: string): unknown {
   try { return isRecord(value) ? value[key] : undefined; } catch { return undefined; }
 }
 
-function sceneNodes(stage: unknown): unknown[] {
-  const output: unknown[] = [];
-  const seen = new Set<object>();
-  const queue: unknown[] = [stage];
-  while (queue.length && output.length < 12_000) {
-    const value = queue.pop();
-    if (!isRecord(value) || seen.has(value)) continue;
-    if (value.destroyed) continue;
-    seen.add(value);
-    output.push(value);
-    const count = Math.min(Math.max(0, Number(value.numChildren) || 0), 1_000);
-    const getChildAt = safeProperty(value, "getChildAt");
-    if (typeof getChildAt !== "function") continue;
-    for (let index = 0; index < count; index++) {
-      try { queue.push(getChildAt.call(value, index)); } catch { /* destroyed child */ }
-    }
-  }
-  return output;
-}
-
 /**
  * The original PC MultiLobby class in dg_selected_bet_source.txt owns these
  * fields.  This deliberately does not recognize a similarly positioned visual
@@ -75,7 +56,7 @@ export function isDgMultiLobbyCard(value: unknown): value is NodeLike {
   const socketMan = safeProperty(safeProperty(value, "playerInfo"), "socketMan");
   return value.tableId !== undefined && isRecord(gameInfo) &&
     isRecord(betBtn) && betBtn.Banker !== undefined && betBtn.Player !== undefined &&
-    isRecord(betMan) && typeof betMan.confirm === "function" && typeof betMan.cancel === "function" &&
+    isRecord(betMan) && [betMan.confirm, betMan.cancel].every(control => typeof control === "function" || (isRecord(control) && typeof safeProperty(control, "event") === "function")) &&
     isRecord(safeProperty(value, "betMoneyTmp")) && isRecord(safeProperty(value, "betMoneyTrue")) &&
     typeof safeProperty(value, "confirmBet") === "function" &&
     isRecord(socketMan) && typeof socketMan.sendData === "function";
@@ -104,7 +85,7 @@ export function inspectDgMobileNativeSurface(W: unknown): DgMobileNativeProbe {
   if (!isRecord(stage) || typeof safeProperty(stage, "getChildAt") !== "function") {
     return { readiness: "waiting-stage", portrait, cardCount: 0, rejectedCardCount: 0 };
   }
-  const cards = sceneNodes(stage).filter(isDgMultiLobbyCard);
+  const cards = readDgSceneNodes(stage).filter(node => isDgMultiLobbyCard(node) && dgSceneNodeVisible(node));
   if (!cards.length) return { readiness: "waiting-multi-table", portrait, cardCount: 0, rejectedCardCount: 0 };
   const rejectedCardCount = cards.filter(card => !hasDgVerifiedDirectPacketBuilder(card)).length;
   return {

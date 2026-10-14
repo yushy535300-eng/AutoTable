@@ -1,3 +1,4 @@
+import {DG_MOBILE_LAYOUT_CSS} from './dg-panel-mobile-layout';
 import {DG_DENSITY_CSS} from './dg-panel-density';
 import {DG_PRO_CSS} from './dg-panel-pro';
 import {DG_SPACIOUS_CSS} from './dg-panel-spacious';
@@ -16,6 +17,7 @@ ${DG_SPACIOUS_CSS}
 ${DG_SURFACES_CSS}
 ${DG_SMALL_CSS}
 ${OFFICIAL_TURNOVER_CSS}
+${DG_MOBILE_LAYOUT_CSS}
 .doubling-reminder{border-left:3px solid #cba86a;border-radius:5px;padding:8px 9px;background:#a4793324;color:#e6c995;font-size:10px;line-height:1.6;margin:8px 0;}
 </style>
 

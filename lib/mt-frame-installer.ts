@@ -1,3 +1,4 @@
+import {isMtRestrictedHtml} from '../shared/mt-access-page';
 import { mtLaunchOrigin, mtLaunchSearch } from '../shared/mt-origins';
 
 export type MtFrame = { contentWindow: any; contentDocument: Document | null };
@@ -41,11 +42,19 @@ function nativeClick(frame: MtFrame | null): MtNativeClick | null {
   const api = verified?.win.__MT_NATIVE_CLICK__ as MtNativeClick | undefined;
   return api && typeof api.view === 'function' ? api : null;
 }
+/** The upstream may return a same-origin HTML denial page instead of the game. */
+export function mtFrameAccessBlocked(frame: MtFrame | null): boolean {
+  const verified = verifiedMtWindow(frame);
+  if (!verified) return false;
+  return verified.win.__AUTOBAC_MT_ACCESS_RESTRICTED__ === true ||
+    isMtRestrictedHtml(verified.doc.documentElement.outerHTML || '');
+}
 
 /** A marker, matching local prefix, parent identity, and ready DOM are all required. */
 export function mtFramePanelStatus(frame: MtFrame | null): { installed: boolean; pending: boolean; uncertain: boolean; ready: boolean; failure: string | null } {
   const verified = verifiedMtWindow(frame);
   if (!verified) return { installed: false, pending: true, uncertain: true, ready: false, failure: 'foreground_unverified' };
+  if(mtFrameAccessBlocked(frame))return {installed:false,pending:false,uncertain:false,ready:false,failure:'upstream_access_restricted'};
   const api = verified.win.__MT_NATIVE_CLICK__ as MtNativeClick | undefined;
   if (!api || typeof api.view !== 'function') {
     const failure = verified.win.__AUTOBAC_MT_CONSOLE_ERROR__;
@@ -69,6 +78,7 @@ export function mtFramePanelStatus(frame: MtFrame | null): { installed: boolean;
 export async function installMtFramePanel(frame: MtFrame): Promise<MtInstallResult> {
   const verified = verifiedMtWindow(frame);
   if (!verified) return 'cross-origin';
+  if (mtFrameAccessBlocked(frame)) return 'failed';
   if (nativeClick(frame)) return 'installed';
   if (verified.win.__AUTOBAC_MT_CONSOLE_ERROR__) return 'blocked';
   // Normal proxy HTML has a defer tag before vendor scripts. Let that single

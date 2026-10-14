@@ -13,6 +13,17 @@ export function createMtOfficialTurnover(W: any, canRefresh: () => boolean = () 
   let blocked = false;
   let nativeRequests = 0;
   const listeners = new Map<any, { message: (event: any) => void; close: () => void }>();
+  const subscribers = new Set<() => void>();
+  let notificationScheduled = false;
+  function notify() {
+    if (disposed || notificationScheduled) return;
+    notificationScheduled = true;
+    W.queueMicrotask(() => {
+      notificationScheduled = false;
+      if (disposed) return;
+      for (const callback of subscribers) { try { callback(); } catch { /* isolate UI listeners */ } }
+    });
+  }
   const previousSend = W.WebSocket.prototype.send;
   const now = () => Date.now();
   const copy = (): OfficialTurnoverView => JSON.parse(JSON.stringify(data));
@@ -21,12 +32,14 @@ export function createMtOfficialTurnover(W: any, canRefresh: () => boolean = () 
     for (const p of ['today', 'week'] as const) {
       data[p].value = null; data[p].updatedAt = null; data[p].status = status;
     }
+    notify();
   }
   function newDay() {
     const current = taipeiDay(now());
     if (current === day) return;
     day = current;
     data = emptyTurnover('MT', data.today.scope);
+    notify();
     // A response without echoed dates cannot be safely assigned across midnight.
     if (active || nativeRequests) { blocked = true; queue = []; }
     else lastCycle = 0;
@@ -49,6 +62,7 @@ export function createMtOfficialTurnover(W: any, canRefresh: () => boolean = () 
       range: mtOfficialRange(current.period, current.sentAt).label,
       status: value === null ? (code === 0 ? '官方回覆缺少有效下注總計' : '官方報表未成功，待同步') : '官方已同步',
     };
+    notify();
     W.setTimeout(() => pump(), 300);
   }
   function attach(s: any) {
@@ -108,6 +122,7 @@ export function createMtOfficialTurnover(W: any, canRefresh: () => boolean = () 
     const at = now(), range = mtOfficialRange(period, at);
     active = { period, day, sentAt: at, collision: false };
     data[period].status = '同步官方報表中';
+    notify();
     ownSending = true;
     try {
       socket.send(JSON.stringify({
@@ -133,13 +148,20 @@ export function createMtOfficialTurnover(W: any, canRefresh: () => boolean = () 
     }
     return pump();
   }
+  // A game socket can already be open before this deferred console runs.
+  // Attach immediately instead of waiting for the vendor's next ping/send.
+  const socketCreated = (event: any) => attach(event.detail);
+  W.addEventListener?.('autobac:mt-websocket', socketCreated);
+  for (const existing of W.__AUTOBAC_MT_EARLY_WS__?.sockets || []) attach(existing);
   const timer = W.setInterval(() => refresh(), 1000);
   function dispose() {
     if (disposed) return;
     disposed = true; W.clearInterval(timer); active = null; queue = [];
     for (const [s, l] of listeners) { s.removeEventListener('message', l.message); s.removeEventListener('close', l.close); }
     listeners.clear();
+    subscribers.clear();
+    W.removeEventListener?.('autobac:mt-websocket', socketCreated);
     if (W.WebSocket.prototype.send === send) W.WebSocket.prototype.send = previousSend;
   }
-  return { view: () => { newDay(); return copy(); }, refresh, dispose };
+  return { view: () => { newDay(); return copy(); }, refresh, dispose, subscribe(callback: () => void) { subscribers.add(callback); return () => { subscribers.delete(callback); }; } };
 }

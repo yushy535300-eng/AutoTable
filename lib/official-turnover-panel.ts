@@ -2,7 +2,7 @@ import type { OfficialTurnoverView } from './official-turnover-data';
 
 export const OFFICIAL_TURNOVER_HTML = `<section class="official-turnover" aria-label="平台官方有效下注流水">
   <div class="turnover-values"><div><small>今日流水</small><strong id="official-today">待同步</strong></div><div><small>近7日流水</small><strong id="official-week">待同步</strong></div></div>
-  <span class="turnover-source" id="official-source">官方有效下注額 · 非本工具注額估算</span>
+  <div class="turnover-footer"><span class="turnover-source" id="official-source">官方有效下注額 · 非本工具注額估算</span><button id="official-refresh" type="button" aria-label="更新平台官方有效流水">更新</button></div>
 </section>`;
 export const OFFICIAL_TURNOVER_REPORT_HTML = `<div class="report-official-turnover"><small>平台官方有效下注流水</small><div><span>今日 <strong id="report-official-today">待同步</strong></span><span>近7日 <strong id="report-official-week">待同步</strong></span></div><p id="report-official-source">與下方本工具下注紀錄分開統計</p></div>`;
 export const OFFICIAL_TURNOVER_CSS = `
@@ -11,7 +11,7 @@ export const OFFICIAL_TURNOVER_CSS = `
 .turnover-values small{display:block;font-size:9px;color:#aac1cb;margin-bottom:3px;}
 .turnover-values strong{display:block;font-size:13px;line-height:17px;color:#d6ece4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .turnover-values>div+div{border-left:1px solid #607f8738;padding-left:12px;}
-.turnover-source{display:block;font-size:8px;line-height:12px;color:#98adb8;margin-top:4px;}
+.turnover-footer{display:flex;align-items:center;gap:5px}.turnover-footer .turnover-source{flex:1;min-width:0}#official-refresh{flex:none;min-width:32px;min-height:26px;font-size:9px;border:1px solid #8cabb344;border-radius:5px;padding:3px 5px;background:#263f44;color:#c9e4df}.turnover-source{display:block;font-size:8px;line-height:12px;color:#98adb8;margin-top:4px;}
 #panel.compact:not(.mini) .official-turnover{padding:6px 8px;}
 #panel.compact:not(.mini) .chart-wrap{height:66px;}
 #panel.compact:not(.mini) .chart{height:25px;margin:3px 0;}
@@ -63,6 +63,6 @@ export function renderOfficialTurnover(shadow: ShadowRoot, view?: OfficialTurnov
   }
   const source = q('official-source');
   const note = q('report-official-source');
-  if (source) { source.textContent = '官方有效下注額 · 非本工具注額估算'; source.title = view ? `${view.today.scope}；${view.today.status}；${view.week.status}` : '等待官方來源'; }
+  if (source) { const pending = view && (view.today.value === null || view.week.value === null); source.textContent = pending ? view.today.status === view.week.status ? view.today.status : `今日：${view.today.status}｜近7日：${view.week.status}` : '官方有效下注額 · 非本工具注額估算'; source.title = view ? `${view.today.scope}；${view.today.status}；${view.week.status}` : '等待官方來源'; }
   if (note) note.textContent = `${view?.today.scope ?? '官方報表'}；近7日依平台期間，與本工具下注紀錄分開統計。`;
 }

@@ -7,7 +7,7 @@ import { ensureDgMultiHall } from '@/lib/dg-auto-multihall';
 import { AutoBacGameHeader } from '@/components/autobac-game-header';
 import { AutoBacPlatformChoice, type GamePlatform } from '@/components/autobac-platform-choice';
 import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources } from '@/lib/dg-frame-installer';
-import { enterMtForeground, installMtFramePanel, ensureMtMultiplePage, mtFrameHasPending, mtFramePanelStatus, preserveMtFrameLedger, stopMtFramePanel } from '@/lib/mt-frame-installer';
+import { enterMtForeground, installMtFramePanel, ensureMtMultiplePage, mtFrameAccessBlocked, mtFrameHasPending, mtFramePanelStatus, preserveMtFrameLedger, stopMtFramePanel } from '@/lib/mt-frame-installer';
 
 type Auth = { sessionId: string; token: string; platform: 'TZ' | 'OFA' };
 type Departure = 'choose' | 'logout' | 'retry';
@@ -23,8 +23,10 @@ export default function AutoBacScreen() {
   const [notice, setNotice] = useState('');
   const [departure, setDeparture] = useState<Departure | null>(null);
   const [installed, setInstalled] = useState(false);
+  const [mtAccessBlocked, setMtAccessBlocked] = useState(false);
   const [authInvalid, setAuthInvalid] = useState(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const nativeMtLaunch = useRef('');
   const launchCache = useRef(new Map<string, { sessionId: string; promise: Promise<string> }>());
   const launchBusy = useRef(false);
   const generation = useRef(0);
@@ -35,7 +37,7 @@ export default function AutoBacScreen() {
     if (launchBusy.current) return;
     launchBusy.current = true;
     const currentGeneration = generation.current;
-    setError(''); setInstalled(false); setMessage(`正在取得 ${target} 授權…`);
+    setError(''); setInstalled(false); setMtAccessBlocked(false); setMessage(`正在取得 ${target} 授權…`);
     try {
       if (Platform.OS !== 'web') throw new Error('請使用手機或電腦瀏覽器開啟此版本。');
       const cacheKey = `${target}:${device}`;
@@ -48,6 +50,7 @@ export default function AutoBacScreen() {
       }
       const url = await cache.promise;
       if (currentGeneration !== generation.current) return;
+      if (target === 'MT') nativeMtLaunch.current = url;
       setMessage(`正在開啟 ${target}…`);
       const foreground = target === 'DG' ? await enterDgForeground(current.sessionId, url) : await enterMtForeground(current.sessionId, url);
       if (currentGeneration !== generation.current) return;
@@ -61,7 +64,7 @@ export default function AutoBacScreen() {
 
   function resetForeground() {
     generation.current++; launchBusy.current = false;
-    setSelected(null); setGameUrl(''); setInstalled(false); setError(''); setDeparture(null);
+    setSelected(null); setGameUrl(''); setInstalled(false); setError(''); setDeparture(null); setMtAccessBlocked(false); nativeMtLaunch.current = '';
   }
   function stopAndPreserve() {
     if (selected === 'DG') { stopDgFramePanel(frameRef.current); preserveDgFrameLedger(frameRef.current); }
@@ -132,6 +135,13 @@ export default function AutoBacScreen() {
       const frame = frameRef.current;
       if (!frame || cancelled) return;
       if (authInvalid) { await stopMtFramePanel(frame); preserveMtFrameLedger(frame); return; }
+      if (mtFrameAccessBlocked(frame)) {
+        await stopMtFramePanel(frame);
+        try { await (frame.contentWindow as any)?.__MT_NATIVE_CLICK__?.dispose?.(); } catch { /* denial page cleanup is best effort */ }
+        if (!cancelled) { setInstalled(false); setMtAccessBlocked(true); setError('MT 代理入口收到訪問限制頁，遊戲尚未載入；原因尚未確認。可按「核對原MT入口」比對舊版直接登入方式；此按鈕不執行下注。'); setMessage('MT 遊戲未載入，已停止自動操作。'); }
+        return;
+      }
+      if (!cancelled) setMtAccessBlocked(false);
       const before = mtFramePanelStatus(frame);
       const multi=ensureMtMultiplePage(frame);
       if(multi==='requested')setMessage('正在自動進入 MT 多台…');
@@ -196,6 +206,32 @@ export default function AutoBacScreen() {
     node.href = url; node.download = 'DG-mobile-script-list.json'; node.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  function exportConnectionDiagnosis() {
+    const frame = frameRef.current;
+    let runtime: any = { inaccessible: true };
+    try {
+      if (frame?.contentDocument?.location.origin === window.location.origin) {
+        const W: any = frame.contentWindow;
+        if (selected === 'DG') runtime = {
+          laya: !!W.Laya?.stage, mobile: W.__DG_SINGLEPAGE__?.mobileDiagnostics?.(),
+          tables: W.__DG_SINGLEPAGE__?.diagnostics?.() || [],
+          state: W.__DG_SINGLEPAGE__?.status?.().status || '等待面板',
+          scripts: exportDgFrameMobilePublicSources(frame).scripts,
+        };
+        else { const report = W.__MT_AUTOBAC_DIAG__?.report?.(); runtime = {
+          accessRestricted: mtFrameAccessBlocked(frame), marker: !!W.__AUTOBAC_MT_FOREGROUND__,
+          tables: (report?.tableViewport?.tables || []).map((row: any) => ({name: row.name, tableId: row.tableId})),
+          walletSynced: typeof report?.betObservation?.memberBalance === 'number',
+          failure: mtFramePanelStatus(frame).failure,
+        }; }
+      }
+    } catch { /* keep a credential-free inaccessible status */ }
+    const data = {version: '3.2-mobile-runtime', platform: selected, requestedDevice: gameDevice, hasError: !!error, errorCode: error.match(/session_invalid|foreground_origin_required|invalid_mt_launch|entry_response_invalid/)?.[0] || null, runtime};
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob), node = document.createElement('a');
+    node.href = url; node.download = `AutoBac-${selected}-connection-diagnostic.json`; node.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   const mt = selected === 'MT';
   return <View style={s.page}>
     <AutoBacGameHeader platform={selected} installed={installed} disabled={authInvalid} onReconnect={() => retry()} onLogout={() => signOut()} onSelectPlatform={() => choosePlatform()} />
@@ -207,9 +243,12 @@ export default function AutoBacScreen() {
         style: { width: '100%', height: '100%', border: 0, background: '#000' },
         onLoad: () => { if (!mt && frameRef.current) ensureDgMultiHall(frameRef.current, /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop'); },
       }) : <View style={s.loading}><View style={s.loadingMark}><Text style={s.loadingLetter}>{selected}</Text></View><Text style={s.loadingTitle}>正在進入 {selected}</Text><Text style={s.loadingText}>{message}</Text></View>}
-      {mt && gameUrl ? <View testID="mt-native-status" style={s.mtStatus}><Text style={s.mtStatusText}>{installed ? 'MT 同源原生入口 · 完整面板已接通' : 'MT 同源原生入口 · 等待完整面板'}</Text></View> : null}
+      {mt && gameUrl && !mtAccessBlocked ? <View testID="mt-native-status" style={s.mtStatus}><Text style={s.mtStatusText}>{installed ? 'MT 同源原生入口 · 完整面板已接通' : 'MT 同源原生入口 · 等待完整面板'}</Text></View> : null}
       {selected === 'DG' && !installed && gameUrl ? <View testID="dg-install-status" style={s.mtStatus}><Text style={s.mtStatusText}>{message || 'DG 遊戲引擎載入中 · 尚未啟用自動操作'}</Text>{/^\/ddnewwap\//.test(gameUrl) ? <Pressable onPress={exportMobileSourceList}><Text style={s.toolText}>匯出 DG 手機腳本清單（不含憑證）</Text></Pressable> : null}</View> : null}
-      {error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text><Pressable onPress={() => retry()} disabled={authInvalid} style={s.retry}><Text style={s.toolText}>重試</Text></Pressable></View> : null}
+      {error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text><View style={{gap: 6}}><Pressable onPress={() => retry()} disabled={authInvalid} style={s.retry}><Text style={s.toolText}>重試</Text></Pressable>{mtAccessBlocked && nativeMtLaunch.current ? <Pressable onPress={() => {
+        stopAndPreserve();
+        window.open(nativeMtLaunch.current, '_blank', 'noopener,noreferrer');
+      }} style={s.retry}><Text style={s.toolText}>核對原MT入口</Text></Pressable> : null}<Pressable onPress={exportConnectionDiagnosis} style={s.retry}><Text style={s.toolText}>匯出連線診斷</Text></Pressable></View></View> : null}
       {departure ? <View testID="pending-departure" style={s.pendingBox}>
         <Text style={s.errorText}>{mt ? 'MT 完整面板已停止新增操作，但仍有待確認／待結算或無法安全讀取的原生注單。請先在面板核對；切換、重連或登出不會取消平台已接受的下注。' : '已停止新增下注。仍有待結算／未核對注單，請先在面板核對後再切換、重連或登出。這些操作不會取消已接受的注單。'}</Text>
         <View style={{ gap: 8 }}><Pressable onPress={() => setDeparture(null)} style={s.retry}><Text style={s.toolText}>返回核對</Text></Pressable>

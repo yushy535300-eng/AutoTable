@@ -31,8 +31,8 @@ const fixture=()=>{
    await page.mouse.move(0,0);await panel.evaluate(n=>n.getRootNode().activeElement?.blur());await page.waitForTimeout(180);await panel.screenshot({path:`/home/ubuntu/dg_ui_reference/settings-${name}.png`});
    const hostUI=page.locator('#__dg_singlepage_panel__');
    await hostUI.locator('#provider-trigger').click();
-   if(await hostUI.locator('.provider-option').count()!==6)throw Error('缺少策略Logo選項');
-   if(await hostUI.locator('.provider-option svg').count()!==6)throw Error('所有策略沒有自己的Logo');
+   if(await hostUI.locator('.provider-option').count()!==8)throw Error('缺少策略Logo選項');
+   if(await hostUI.locator('.provider-option svg').count()!==8)throw Error('所有策略沒有自己的Logo');
    const menuBounds=await hostUI.locator('#provider-menu').boundingBox(),panelBounds=await panel.boundingBox();if(menuBounds.y<panelBounds.y||menuBounds.y+menuBounds.height>panelBounds.y+panelBounds.height)throw Error('策略選單超出面板');
    await page.mouse.move(0,0);await hostUI.locator('#provider-trigger').evaluate(n=>n.blur());await page.waitForTimeout(180);await panel.screenshot({path:`/home/ubuntu/dg_ui_reference/provider-menu-${name}.png`});
    await hostUI.locator('.provider-option[data-value="gemini"]').click();
@@ -81,7 +81,7 @@ const fixture=()=>{
    await page.locator('#__dg_singlepage_panel__').locator('#close-report').click();
    if(await report.isVisible())throw Error('報表返回失敗');
    const mh=page.locator('#__dg_singlepage_panel__');await mh.locator('#zoom-out').click();
-   const miniSize=await panel.evaluate(n=>[n.offsetWidth,n.offsetHeight]);if(miniSize[0]!==210||miniSize[1]!==228)throw Error('不是真正210×228迷你模式');
+   const miniSize=await panel.evaluate(n=>[n.offsetWidth,n.offsetHeight]);if(miniSize[0]!==210||miniSize[1]<228||miniSize[1]>450)throw Error('迷你摘要高度不符');
    const miniOverflow=await panel.evaluate(n=>{const o=n.querySelector('#overview-page');return o.scrollHeight>o.clientHeight+1||n.scrollWidth>n.clientWidth;});if(miniOverflow)throw Error('迷你資訊被截斷 '+JSON.stringify(await panel.evaluate(n=>{const o=n.querySelector('#overview-page');return {size:[n.clientWidth,n.scrollWidth,o.clientHeight,o.scrollHeight],children:[...o.children].filter(e=>getComputedStyle(e).display!=='none').map(e=>[e.className||e.id,e.offsetHeight])};})));
    await page.mouse.move(0,0);await panel.evaluate(n=>n.getRootNode().activeElement?.blur());await page.waitForTimeout(180);await panel.screenshot({path:`/home/ubuntu/dg_ui_reference/mini-${name}.png`});
    if(name==='portrait'){

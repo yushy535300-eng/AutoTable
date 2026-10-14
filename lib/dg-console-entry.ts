@@ -1,3 +1,4 @@
+import {readDgSceneNodes,dgSceneNodeVisible} from './dg-scene';
 import {createDgPokerTracker} from './poker-strategies';
 import {DgBetLedger, stakingAmount, type DgBet, type DgScope} from './dg-bet-ledger';
 import {localProviderDecision,getPatternInfo,providerAnalysisText,AI_PROVIDER_OPTIONS} from './dg-original-ai';
@@ -92,19 +93,8 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       if(watched&&watched.gameNo===gameNo){const state=currentRoundState(c);if(Number(c.gameInfo?.stateId)===1)watched.reason=state.label;else finish();}
     }
   }
-  function visible(n:any){
-    if(!n||n.destroyed)return false;
-    for(let x=n;x;x=x.parent)if(x.visible===false||x.alpha===0)return false;
-    return true;
-  }
-  function nodes(){
-    const result:any[]=[],stack=[L.stage],seen=new Set<any>();
-    while(stack.length&&result.length<12000){
-      const n=stack.pop();if(!n||seen.has(n)||n.destroyed)continue;seen.add(n);result.push(n);
-      const count=Number(n.numChildren??0);for(let i=0;i<count;i++)stack.push(n.getChildAt(i));
-    }
-    return result;
-  }
+  const visible=dgSceneNodeVisible;
+  function nodes(){return readDgSceneNodes(L.stage);}
   function boards(all=nodes()){
     const unique=new Map<string,any>();
     for(const n of all){
@@ -197,6 +187,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       persist();log(`${settled.bet.tableId}｜${settled.bet.gameNo}｜結算 ${settled.pnl>0?'+':''}${money(settled.pnl)}｜${settled.bet.staking==='flat'?'平注：金額固定':settled.pnl>0?'贏：重置':settled.pnl<0?'輸：升階':'和／退注：維持'}｜下一注 ${money(stakeAmount(settled.bet.tableId))}`);
       if(running){const reason=riskStopReason(roundPnl(),riskLimits);if(reason)stop(reason);}
       window.dispatchEvent(new CustomEvent('dg-singlepage-settlement',{detail:{...settled.bet,nextLevel:settled.nextLevel}}));
+      window.setTimeout(()=>official.refresh(true),800);
     }
   }
   function migrateSingleChain(){
@@ -392,7 +383,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const fullHeight=Math.min(panelHeight,Math.max(280,(window.innerHeight-top-16)/Math.max(.2,widthScale)));
     host.style.setProperty('--full-height',fullHeight+'px');
     host.style.setProperty('--full-width',panelWidth+'px');
-    const height=mini&&!overlay?228:fullHeight;
+    const height=mini&&!overlay?Math.max(228,q('panel').scrollHeight):fullHeight;
     const scale=Math.min(widthScale,(window.innerHeight-top-12)/height);
     host.style.setProperty('--fit',String(Math.max(.2,scale)));
     q('zoom-label').textContent=`${Math.round(scale*100)}%`;
@@ -613,6 +604,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     compact=!compact;q('panel').classList.toggle('compact',compact);q('brand-count').textContent='百家工程師';
     showPage('overview');render();
   };
+  q('official-refresh').onclick=()=>official.refresh(true);
   q('open-records').onclick=q('open-report').onclick=openReport;
   q('compact-stop').onclick=()=>q('stop-now').click();
   q('close-report').onclick=()=>{q('report-shell').hidden=true;showPage('overview');};
@@ -634,7 +626,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     host.style.left=left+'px';host.style.top=top+'px';host.style.right='auto';
     for(const id of ['panel','risk-dialog','report-shell']){q(id).style.transformOrigin='top left';if(id!=='panel'){q(id).style.left='0';q(id).style.right='auto';}}
   };
-  head.onpointerup=head.onpointercancel=()=>{drag=null;};
+  head.onpointerup=head.onpointercancel=head.onlostpointercapture=()=>{drag=null;};
   const cleanupResize=installDgPanelResize([q('resize-panel'),q('resize-report')],{
     getSize:()=>({width:panelWidth,height:Math.min(panelHeight,parseFloat(host.style.getPropertyValue('--full-height'))||panelHeight),scale:parseFloat(host.style.getPropertyValue('--fit'))||1}),
     prepare:target=>{

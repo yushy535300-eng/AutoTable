@@ -1,3 +1,5 @@
+import { readDgSceneNodes, dgSceneNodeVisible } from './dg-scene';
+import { isDgMultiLobbyCard } from './dg-mobile-native';
 import type { DgFrame } from './dg-frame-installer';
 import { inspectDgMobileNativeSurface } from './dg-mobile-native';
 
@@ -6,17 +8,6 @@ export type DgMultiHallMode = 'desktop' | 'mobile';
 type Navigation = { started: number; requested: boolean; requestedAt?: number; completed?: boolean; failed?: boolean };
 const states = new WeakMap<object, Navigation>();
 
-function sceneNodes(stage: any): any[] {
-  const output: any[] = [], seen = new Set<any>(), queue = [stage];
-  while (queue.length && output.length < 5000) {
-    const node = queue.pop();
-    if (!node || seen.has(node) || node.destroyed) continue;
-    seen.add(node); output.push(node);
-    const count = Math.min(Number(node.numChildren) || 0, 1000);
-    for (let i = 0; i < count; i++) { try { queue.push(node.getChildAt(i)); } catch {} }
-  }
-  return output;
-}
 function interactive(node: any): boolean {
   if (!node || node.destroyed || node.mouseEnabled === false || node.disabled === true || typeof node.event !== 'function') return false;
   let current = node, hops = 0;
@@ -51,7 +42,12 @@ export function ensureDgMultiHall(frame: DgFrame | null, mode: DgMultiHallMode =
   }
   let navigation = states.get(doc);
   if (!navigation) { navigation = { started: Date.now(), requested: false }; states.set(doc, navigation); }
-  const nodes = sceneNodes(stage);
+  const nodes = readDgSceneNodes(stage);
+  // GoodRoad/native cards are also supported. Readiness follows the live
+  // betting surface, not only a viewName string or a timed navigation flag.
+  if (nodes.some(node => isDgMultiLobbyCard(node) && dgSceneNodeVisible(node))) {
+    navigation.completed = true; return 'ready';
+  }
   const controller = nodes.find(node => node.gameLeftMan && node.playerInfo && node.currentView);
   if (controller?.currentView?.viewName === 'MultiLobby') { navigation.completed = true; return 'ready'; }
   if (nodes.some(node => node.viewName === 'MultiLobby' && !node.destroyed && node.visible !== false)) { navigation.completed = true; return 'ready'; }

@@ -132,22 +132,14 @@
   const network = [], important = [], clicks = [], snapshots = [], liveTables = new Map();
   let memberBalance = null, memberBalanceAt = 0;
   function officialBalance(packet) {
-    const keys = ['balance','available_balance','availableBalance','wallet_balance','walletBalance'];
-    const seen = new WeakSet();
-    function walk(value, depth = 0) {
-      if (!value || typeof value !== 'object' || depth > 5 || seen.has(value)) return null;
-      seen.add(value);
-      for (const key of keys) {
-        const n = typeof value[key] === 'number' ? value[key] : Number(value[key]);
-        if (Number.isFinite(n) && n >= 0) return n;
-      }
-      for (const child of Object.values(value)) {
-        const found = walk(child, depth + 1);
-        if (found !== null) return found;
-      }
-      return null;
+    // MT's original client reads msg.user.points (not a recursively guessed balance).
+    const envelopes=[packet.msg,packet.body,packet.data].filter(value=>value&&typeof value==='object');
+    const candidates=envelopes.flatMap(value=>[value.user?.points,value.points,value.balance]);
+    for(const value of candidates){
+      if(typeof value!=='number'&&!(typeof value==='string'&&/^\d+(?:\.\d+)?$/.test(value.trim())))continue;
+      const n=Number(value);if(Number.isFinite(n)&&n>=0)return n;
     }
-    return walk(packet);
+    return null;
   }
   function createMtNativeObserver() {
   const records = [], groups = new Map(), unmatched = [];
@@ -163,8 +155,10 @@
   function consume(entry, lookup) {
     const packet=entry.data,name=actionOf(packet);
     if(entry.direction==='receive'&&name==='/api/v1/member/me/balance'&&codeOf(packet)===0) {
-      const value=officialBalance(packet.msg??packet.body??packet.data??packet);
-      if(value!==null){memberBalance=value;memberBalanceAt=Date.now();}
+      const value=officialBalance(packet);
+      memberBalance=value;
+      memberBalanceAt=value===null?0:Date.now();
+      if(typeof W.CustomEvent==='function')W.dispatchEvent?.(new W.CustomEvent('autobac:mt-wallet-updated'));
     }
     if(entry.direction==='send'&&name.endsWith('/bet')&&packet.method==='POST') {
       const body=packet.body||{},tableId=String(packet.action?.data?.table_id||''),slips=body.order?.slips;
@@ -343,7 +337,12 @@
       const packet=raw==null?(typeof body==='object'?body:null):raw.length<=5000000?JSON.parse(raw):null;
       if(!packet||disposed)return;
       const names=actions(packet);
-      if(names.some(a=>/authenticate|\/ping$|\/member\/me$|\/member\/me\/balance$/.test(a)))return;
+      if(names.includes('/api/v1/member/me/balance')){
+        // Consume only the official numeric wallet value; never retain the member profile.
+        observations.consume({at:new Date().toISOString(),direction,data:packet},id=>liveTables.get(id));
+        return;
+      }
+      if(names.some(a=>/authenticate|\/ping$|\/member\/me$/.test(a)))return;
       const entry={at:new Date().toISOString(),direction,transport,endpoint:safeURL(endpoint),actions:names,data:redact(packet)};
       retain(entry);
       note=`已觀察 ${stats.total} 份訊息 · 注單關鍵 ${important.length} 份`;

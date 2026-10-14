@@ -188,7 +188,7 @@ function responseLooksLikeUnfilteredBetReport(bean: AnyRecord, binding: RequestB
   if (!zeroOrMissing(bean.lobbyId) || !zeroOrMissing(bean.tableId)) return false;
   if (Array.isArray(bean.list)) {
     const list = bean.list;
-    if (list.length !== 4 || list[0] !== "" || list[1] !== "" || String(list[2]) !== "12" || String(list[3]) !== "1") return false;
+    if (list.length && (list.length !== 4 || list[0] !== "" || list[1] !== "" || String(list[2]) !== "12" || String(list[3]) !== "1")) return false;
   }
   return true;
 }
@@ -232,7 +232,7 @@ export function createDgOfficialTurnover(
   let lastCycleAt = 0;
   let reconciliationRequired = false;
 
-  const interval = setInterval(() => refresh(false), DG_OFFICIAL_REFRESH_MS);
+  const interval = setInterval(() => refresh(false), 1000);
 
   function safeAccountIdentity(): string {
     let account: unknown = null;
@@ -393,6 +393,7 @@ export function createDgOfficialTurnover(
     if (!runtime || !attach(runtime)) {
       update(period, { value: null, status: "待DG官方報表就緒", updatedAt: null });
       remaining = [];
+      lastCycleAt = 0;
       return;
     }
     let suppliedAccount: unknown;
@@ -405,11 +406,13 @@ export function createDgOfficialTurnover(
     if (runtime.socket.socket?.connected === false) {
       update(period, { value: null, status: "待DG官方報表連線", updatedAt: null });
       remaining = [];
+      lastCycleAt = 0;
       return;
     }
     if (runtime.playerInfo.token === undefined || runtime.playerInfo.token === null || runtime.playerInfo.token === "") {
       update(period, { value: null, status: "待DG官方帳號就緒", updatedAt: null });
       remaining = [];
+      lastCycleAt = 0;
       return;
     }
     const request: OwnRequest = {

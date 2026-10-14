@@ -24,6 +24,37 @@ SOFTWARE.
 /* DG 單頁多桌直接訊息下注；僅在 DG 同源頁面執行。不點擊按鈕；初始為停止。 */
 "use strict";
 (() => {
+  // lib/dg-scene.ts
+  function readDgSceneNodes(stage, maximum = 12e3) {
+    const output = [], queue = [stage], seen = /* @__PURE__ */ new Set();
+    let cursor = 0;
+    while (cursor < queue.length && output.length < maximum) {
+      const node = queue[cursor++];
+      if (!node || typeof node !== "object" || seen.has(node) || node.destroyed) continue;
+      seen.add(node);
+      output.push(node);
+      const count = Math.min(1e3, Math.max(0, Number(node.numChildren) || 0));
+      if (typeof node.getChildAt !== "function") continue;
+      for (let index = 0; index < count && queue.length < maximum * 2; index++) {
+        try {
+          const child = node.getChildAt(index);
+          if (child && !seen.has(child)) queue.push(child);
+        } catch {
+        }
+      }
+    }
+    return output;
+  }
+  function dgSceneNodeVisible(node) {
+    const seen = /* @__PURE__ */ new Set();
+    while (node) {
+      if (seen.has(node) || node.destroyed || node.visible === false || node.alpha === 0) return false;
+      seen.add(node);
+      node = node.parent;
+    }
+    return seen.size > 0;
+  }
+
   // lib/poker-strategies.ts
   var rankNames = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
   function cardRank(value) {
@@ -380,6 +411,7 @@ SOFTWARE.
     { key: "combined", label: "AI\u7D9C\u5408" },
     { key: "road", label: "\u724C\u8DEF\u7B56\u7565" }
   ];
+  AI_PROVIDER_OPTIONS.push({ key: "counting", label: "V38 \u56DB\u5F0F\u7B97\u724C" }, { key: "parity", label: "\u5947\u5076\u7B56\u7565" });
   function roadSides(results) {
     return results.filter((r) => r === "\u838A" || r === "\u9592");
   }
@@ -681,6 +713,30 @@ SOFTWARE.
     const rawConfidence = Math.round(winners.reduce((s, x) => s + x.confidence, 0) / Math.max(1, winners.length));
     return finalize(side, rawConfidence);
   }
+
+  // lib/dg-panel-mobile-layout.ts
+  var DG_MOBILE_LAYOUT_CSS = `
+/* Applied last for both platforms. Content must not disappear behind a fixed footer. */
+#panel.compact:not(.mini) #overview-page{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#panel.compact.mini{width:210px;height:auto;min-height:228px;max-height:none;padding:9px;overflow:visible}
+#panel.compact.mini #overview-page{flex:none;height:auto;min-height:0;overflow:visible;gap:5px}
+#panel.compact.mini .hero{height:auto;min-height:0;max-height:none;padding:0;flex:none}
+#panel.compact.mini #target-box{height:auto;min-height:0;flex:none}
+#panel.compact.mini .mini-context{height:auto;min-height:18px;flex-wrap:wrap;gap:3px;font-size:9px}
+#panel.compact.mini .mini-context>span:last-child{margin-left:auto;font-variant-numeric:tabular-nums}
+#panel.compact.mini .roomline{height:auto;min-height:17px;flex-wrap:wrap;gap:4px}
+#panel.compact.mini .bet-main{height:auto;min-height:39px;margin:3px 0}
+#panel.compact.mini .meta{display:block;height:auto;min-height:0;white-space:normal;overflow:visible;line-height:1.35;font-size:9px;margin:3px 0}
+#panel.compact.mini #hero-status{display:block;height:auto;min-height:0;max-height:none;overflow:visible;line-height:1.35;font-size:9px;margin:3px 0;overflow-wrap:anywhere}
+#panel.compact.mini .turnover-source{display:block;font-size:8px;line-height:11px;margin:2px 0}
+#panel.compact.mini .stats{height:auto;min-height:34px;padding:5px;flex:none}
+#panel.compact.mini .stats small{white-space:normal;line-height:1.25;font-size:8px}
+#panel.compact.mini .stats strong{font-size:10px}
+#panel.compact.mini .compact-actions{height:31px;margin:5px 0 0;position:static;flex:none}
+#panel.compact.mini .compact-actions button{height:31px;min-width:0;font-size:9px}
+#panel.compact.mini .steps,#panel.compact.mini .step-labels,#panel.compact.mini .metrics,
+#panel.compact.mini #cards-result,#panel.compact.mini #chart-wrap,#panel.compact.mini #table-strip{display:none}
+`;
 
   // lib/dg-panel-density.ts
   var DG_DENSITY_CSS = "/* \u56FA\u5B9A\u5916\u6846\u8CC7\u8A0A\u5BC6\u5EA6\u7248\uFF1B\u4E0D\u5F71\u97FF\u9001\u55AE\u6216\u5E33\u672C\u3002 */\n#panel.compact{padding:9px 10px;gap:0}\n.compact #head{height:25px}\n.compact #overview-page{display:flex;flex-direction:column;overflow:hidden;gap:3px}\n.compact .parallel-control{height:27px;flex:none;margin:0;gap:8px}\n.compact .parallel-control label{font-size:10px}\n.compact .parallel-control select{height:27px;font-size:11px}\n.compact .parallel-summary{height:13px;flex:none;margin:0;font-size:9px;color:#b1aab9;white-space:nowrap}\n.compact .mini-context{display:flex;align-items:center;justify-content:space-between;height:16px;flex:none;font-size:9px;color:#bbb2c5;gap:5px}\n.compact .mini-context strong{color:#e5e2e8;font-size:10px;font-variant-numeric:tabular-nums}\n.compact #mini-running{white-space:nowrap}\n.compact .hero{padding:0;flex:none;height:144px;display:flex;flex-direction:column;min-width:0;gap:0}\n.compact #target-box{height:87px;flex:none;min-width:0}\n.compact .roomline{margin:0;height:17px;gap:6px;font-size:11px}\n.compact .roomline .subtle{font-size:9px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}\n.compact .bet-main{height:40px;margin:1px 0;gap:8px}\n.compact .ring{height:36px;width:36px}\n.compact .ring-inner{font-size:12px}\n.compact .bet-value{min-width:0;gap:5px}\n.compact .amount{font-size:28px;letter-spacing:-.8px;min-width:0;font-variant-numeric:tabular-nums;white-space:nowrap}\n.compact .amount.long-number{font-size:22px}\n.compact .side{font-size:9px;padding:3px 4px}\n.compact .meta{height:13px;font-size:9px;line-height:13px;color:#ada4b5;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}\n.compact .steps{margin:3px 0 0;height:2px}\n.compact .step{height:2px}\n.compact .step-labels{margin:2px 0 0;font-size:8px}\n.compact .metrics{margin:2px 0 0;height:24px;flex:none}\n.compact .metrics small{font-size:8px;margin:0 0 2px;color:#a99ead}\n.compact .metrics strong{font-size:11px}\n.compact .range-view{height:8px;flex:none;margin:1px 0 2px}\n.compact .statusline{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:3px 0 0;font-size:9px;line-height:12px;color:#b8a9ba;min-height:0;height:24px;flex:none;cursor:pointer;overflow-wrap:anywhere}\n.compact .cards-result{height:19px;padding:0;margin:1px 0;flex:none;border-radius:4px;align-items:center;gap:8px}\n.compact:has(#cards-result:not([hidden])) #target-box{height:68px}\n.compact:has(#cards-result:not([hidden])) .steps,.compact:has(#cards-result:not([hidden])) .step-labels{display:none}\n.compact .cards-side{display:flex;align-items:center;gap:4px}\n.compact .cards-side>small{font-size:8px;white-space:nowrap}\n.compact .cards-side>strong{font-size:9px;float:none}\n.compact .cards-line{margin:0;gap:2px}\n.compact .playing-card{width:12px;height:16px;border-radius:2px;font-size:9px}\n.compact .stats{height:40px;flex:none;margin:0;padding:6px 8px;gap:4px}\n.compact .stats small{font-size:8px;margin-bottom:3px;white-space:nowrap}\n.compact .stats strong{font-size:11px;white-space:nowrap}\n.compact .chart-wrap{height:64px;flex:none;padding:5px 7px 3px;margin:0}\n.compact .chart-head{font-size:8px;height:11px}\n.compact .chart-head strong{font-size:9px}\n.compact .chart{height:32px;margin:3px 0 0}\n.compact .chart-empty{font-size:9px;top:30px}\n.compact .chart-foot{font-size:8px;height:10px;margin-top:2px}\n.mini-context,#table-strip{display:none}\n.compact #table-strip{display:flex;height:32px;flex:none;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#55495d transparent}\n.table-chip{flex:none;min-width:72px;max-width:105px;padding:3px 5px;text-align:left;border:1px solid #453d4c;border-radius:5px;background:#252129;font-size:9px;line-height:12px;overflow:hidden}\n.table-chip.selected{border-color:#8aab8c;background:#2e3a31}\n.table-chip strong,.table-chip small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.table-chip strong{font-size:9px;font-weight:600}\n.table-chip small{font-size:8px;color:#b8abba}\n.compact .compact-actions{height:31px;flex:none;margin:0;padding:0;position:static;gap:6px}\n.compact .compact-actions button{height:31px;font-size:10px;border:1px solid #ffffff08}\n.compact .search-box{min-height:0;height:87px;padding:2px 0}\n.compact .search-box strong{font-size:17px}\n.compact .search-note{font-size:9px}\n#hero-status:focus-visible{outline:1px solid #93ac93}\n.form-body label{font-size:10px;margin:8px 0 4px}\n.form-body select,.form-body input:not([type=checkbox]){height:29px;font-size:11px}\n#settings-page .page-title,#logs-page .page-title{font-size:16px;margin:8px 0 6px}\n#settings-page .page-caption,#logs-page .page-caption{font-size:10px;margin-bottom:8px}\n#settings-page .settings-added{font-size:9px}\n\n.report-scroll{overflow-x:hidden}.report-card{border:1px solid #4a3b24;background:#211b13;border-radius:6px;padding:8px;margin-bottom:7px}.report-card-head{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:11px;margin-bottom:5px}.report-card-head strong{font-size:11px}.report-state{color:#baaa8b;font-size:9px}.report-values{display:flex;justify-content:space-between;gap:5px;font-size:10px;font-variant-numeric:tabular-nums}.report-card-time{font-size:8px;color:#a08f72;margin-top:5px;overflow-wrap:anywhere}.report-footer{display:flex;flex-wrap:wrap;gap:7px}.report-footer>span:first-child{width:100%;font-size:10px;line-height:1.5}.report-scroll .report-empty{padding:16px 8px}.report-note{font-size:9px}\n\n.compact .tools{gap:1px}.compact .tools button{width:21px;height:23px;font-size:13px}.compact .brand{font-size:11px}.compact .parallel-summary{color:#c8bfce}.compact .mini-context{font-size:10px;color:#c9c2d1}.compact .subtle,.compact .meta{font-size:10px;color:#c3bacb}.compact .step-labels{font-size:9px;color:#ada4b5}.compact .metrics small,.compact .stats small{font-size:9px;color:#c0b4c8}.compact .chart-head,.compact .chart-foot{font-size:9px;color:#c3b8cc}.compact .chart-empty{color:#b9adc3}.compact .table-chip small{font-size:9px;color:#cec3d5}.compact .table-chip strong{font-size:10px}.compact .chart-wrap{height:65px}.form-body #zoom{height:20px;padding:0;accent-color:#8ead95}.page-caption,.settings-added,.fineprint{color:#c1b5ca!important;font-size:10px!important}.form-body label{color:#e0d6e7}.ack{font-size:10px!important}.report-note,.report-card-time,.report-state{font-size:10px;color:#c9b794}.report-values{font-size:11px}.report-card-head strong{font-size:12px}\n\n*{scrollbar-width:none!important}*::-webkit-scrollbar{display:none!important;width:0;height:0}#overview-page,#settings-page,#logs-page,.report-scroll,#events,#table-strip{scrollbar-width:none!important;-ms-overflow-style:none}#table-strip{overscroll-behavior-x:contain}\n\n.choose-tables{height:27px;font-size:10px;padding:0 6px;border:1px solid #544c5c;border-radius:6px;background:#28222e;flex:none}.rooms-back{width:100%;height:32px;margin-top:14px;border-radius:7px;background:#34473a;font-size:11px}#rooms-page{flex:1;min-height:0;overflow:auto}#rooms-page .room{font-size:11px;min-height:31px;padding:7px 10px}#rooms-page .page-title{font-size:16px;margin:10px 0}\n\n:host{--gold:#d5b779;--mint:#9bd0af;--muted:#b4bec2;color:#f1f5f3;-webkit-font-smoothing:antialiased}\n#panel,#panel.compact{background:radial-gradient(ellipse at 100% 0,#33423b40,transparent 50%),linear-gradient(165deg,#171e1e,#111718 75%);border:1px solid #84968a38;box-shadow:0 14px 38px #0008,inset 0 1px 0 #ffffff0c}\n.compact .brand{color:#ecdfbe;font-weight:700;letter-spacing:.1px}.dot{background:#a5d4b1;box-shadow:0 0 8px #a5d4b155}\n.tools button{background:#25302f;border:1px solid #90a29320;color:#b8c7c2;display:grid;place-items:center}.tools button svg{width:13px;height:13px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}.tools button:hover{background:#34443e;color:#f2e3bb}.tools button.active{color:#e8c890;border-color:#d5b77988;background:#50432e}\nbutton{transition:background .12s,border-color .12s,color .12s}button:disabled{cursor:default;opacity:.6}select,input:not([type=checkbox]){outline:none}.parallel-control select,.form-body select,.form-body input:not([type=checkbox]){background:#232d2d;border-color:#82938b44;color:#f0f5f1;border-radius:7px}.parallel-control select:focus,.form-body select:focus,.form-body input:focus{border-color:#d5b779;box-shadow:0 0 0 2px #d5b77917}\n.choose-tables{background:#38372a;border-color:#b49a6355;color:#ead7ac}.compact .parallel-summary{color:#acbab4}.compact .mini-context{color:#a7b7af}.compact #mini-running{color:#d2c49e}.compact .roomline{color:#edf5ef}.compact .meta,.compact .subtle{color:#becbc4}.compact .amount{color:#f5f8f3;text-shadow:0 2px 12px #b8d1b211}.side{background:#623d354d;color:#f4a38c}.side.player{background:#324b6455;color:#aad4ff}.ring-inner{background:#1b2623;color:#d8e9db}\n.compact .stats{background:linear-gradient(115deg,#28352f,#222c2b);border:1px solid #93aa9726;border-radius:8px}.compact .stats small,.compact .metrics small{color:#bec9c1}.green{color:#a1d8b2!important}.red{color:#eeac9c!important}\n.compact .chart-wrap{background:#14201d;border-color:#92a99924;border-radius:8px}.compact .chart-head{color:#c1ccbf}.compact .chart-head strong{color:#d7bf8e}.compact .chart-foot{color:#b1bdb1}.chart polyline{stroke:#9ac9a7}.chart .chart-dot{fill:#cde2af}.chart .chart-area{fill:#9ac9a722}\n.table-chip{background:#24302e;border-color:#84988a33;border-radius:7px}.table-chip.selected{background:linear-gradient(120deg,#3b4738,#2a3930);border-color:#c2b58288}.compact .table-chip strong{color:#f0ebda}.compact .table-chip small{color:#b8c9bc}\n.compact .compact-actions button{background:#293634;border-color:#90a79835;color:#e3ede5;font-weight:600;border-radius:8px}.compact .compact-actions #compact-stop{background:linear-gradient(120deg,#3c644d,#2d523d);color:#ddf1df;border-color:#8ec09755}.compact .compact-actions #compact-stop.live{background:linear-gradient(120deg,#733f36,#58342e);color:#ffe1d4;border-color:#d68d7655}\n.form-body label{color:#d9e1d8}.settings-added{color:#b8c9bd!important}.ack{color:#c9d4cb!important}.ack input{accent-color:#bba675}.setting-actions #start,.rooms-back{background:#3b614d;color:#e9f4e8}.setting-actions #once{background:#4a4935;color:#e7dcbd}.setting-actions #stop{background:#673b32;color:#f7d5c9}.room{background:#25322d;border-color:#87998c44;color:#d4dfd5}.room.active{background:#494734;border-color:#c5ae73;color:#f4e1b7}\n.page-title{color:#f1e5c7}.log-status{background:#26342e;border:1px solid #8ba78e30;color:#e2e7d5!important}#events{font-size:10px;color:#c5d2c8}.report-shell{background:linear-gradient(155deg,#19201b,#131a17);border-color:#a893654d}.report-card{background:linear-gradient(120deg,#29332a,#222d25);border-color:#b19c6636;border-radius:8px}.report-card-head strong{color:#f3e4c1}.report-state,.report-note,.report-card-time{color:#bfccb7}.report-filter select,.report-filter button{background:#263428;border-color:#97a58355}.report-head button,.report-footer button{background:#3a4434;border-color:#98a68355}.report-head h2{color:#e7d3a2}.report-tabs button.selected{color:#e7c784;border-color:#d0b571}\n\n.compact #head{height:50px;flex:none}.compact .topline{height:48px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:5px}.compact .brand{font-size:13px;line-height:15px}.compact .tools{width:100%;gap:3px;justify-content:space-between}.compact .tools button{height:28px;width:25px;min-width:25px;border-radius:6px;background:#304039;border-color:#a4bbab66;color:#e2eade;box-shadow:inset 0 1px 0 #ffffff12}.compact .tools #nav-overview,.compact .tools #nav-settings,.compact .tools #nav-logs{width:43px;display:flex;gap:3px;justify-content:center;font-size:10px}.compact .tools button svg{width:15px;height:15px}.compact .tools #nav-overview svg,.compact .tools #nav-settings svg,.compact .tools #nav-logs svg{width:12px;height:12px}.compact .tools button.active{background:#6a5931;border-color:#dbc584;color:#fff0bf;box-shadow:0 0 7px #dcc48220}.compact .tools #hide{color:#e9b6a5;background:#533a33;border-color:#c7947766}.compact .hero{height:119px}.compact .metrics{display:none}.compact .statusline{margin-top:5px}.compact .hero #target-box{height:87px}.compact:has(#cards-result:not([hidden])) .hero #target-box{height:68px}.compact .bet-main{margin-top:2px}.compact #overview-page{gap:3px}\n\n#head{height:50px;flex:none}.topline{height:48px;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:5px}.brand{font-size:13px;line-height:15px}.tools{width:100%;gap:3px;justify-content:space-between}.tools button,.compact .tools button{flex:none;padding:0}.tools #nav-overview,.tools #nav-settings,.tools #nav-logs{width:43px;display:flex;gap:3px;justify-content:center;font-size:10px}.tools #nav-overview svg,.tools #nav-settings svg,.tools #nav-logs svg{display:none}.tools span{white-space:nowrap;line-height:1;flex:none}.tools button{height:28px;width:25px;border-radius:6px}.tools button.active{background:#6a5931;border-color:#dbc584;color:#fff0bf}.brand{color:#ecdfbe;font-weight:700}\n\n.risk-overlay{position:absolute;right:0;top:0;width:276px;height:448px;z-index:10;display:grid;place-items:center;background:#08110ed9;backdrop-filter:blur(4px);border-radius:15px;transform:scale(var(--fit));transform-origin:top right;padding:12px}.risk-card{width:100%;padding:16px 12px 14px;border:1px solid #b7a06888;border-radius:12px;background:linear-gradient(155deg,#2c3123,#19221b);box-shadow:0 10px 25px #0007;text-align:center}.risk-triangle{width:74px;height:67px;margin:0 auto 8px;display:block;filter:drop-shadow(0 0 9px #d7b96b33)}.risk-triangle>path:first-child{fill:#e4c274;stroke:#f4dfa4;stroke-width:2;stroke-linejoin:round}.risk-mark{fill:none;stroke:#3a2a15;stroke-width:6;stroke-linecap:round}.risk-point{fill:#3a2a15}.risk-card h2{font-size:18px;color:#f2dfae;margin:0 0 13px}.risk-copy{font-size:13px;line-height:1.9;text-align:left;color:#eee8d7;margin:0 0 17px;overflow-wrap:anywhere}.risk-ack{display:flex;align-items:center;gap:7px;text-align:left;font-size:11px;line-height:1.6;color:#d3e3d5;margin:0 0 16px}.risk-ack input{margin:0;width:17px;height:17px;accent-color:#c6ad6a;flex:none}.risk-actions{display:flex;gap:8px}.risk-actions button{flex:1;height:35px;border:1px solid #84988555;border-radius:7px;background:#303d34;font-size:12px;font-weight:600;color:#e8eee8}.risk-actions #risk-confirm{background:#546d40;border-color:#b1c38588;color:#f4f3dd}.risk-actions #risk-confirm:disabled{background:#303b2b;opacity:.45;cursor:not-allowed}\n\n#panel.compact.mini{width:210px;height:228px;padding:9px;border-radius:12px}\n.compact.mini #head{height:29px}.compact.mini .topline{height:27px;flex-direction:row;align-items:center;gap:4px}.compact.mini .brand{font-size:12px;white-space:nowrap}.compact.mini .tools{width:auto;gap:0}.compact.mini .tools button{display:none}.compact.mini .tools #zoom-out{display:grid;width:31px;height:27px;color:#f7e7bc;border-color:#c5ae7366}.compact.mini .tools #zoom-out svg{width:17px;height:17px}\n.compact.mini .parallel-control,.compact.mini .parallel-summary,.compact.mini .chart-wrap,.compact.mini #table-strip{display:none}\n.compact.mini #overview-page{gap:5px}.compact.mini .mini-context{height:18px;font-size:10px}.compact.mini .hero{height:86px;padding:0}.compact.mini #target-box,.compact.mini:has(#cards-result:not([hidden])) .hero #target-box{height:60px}.compact.mini .roomline{height:16px;font-size:11px}.compact.mini .bet-main{height:39px;margin:2px 0 0;gap:6px}.compact.mini .amount{font-size:25px}.compact.mini .amount.long-number{font-size:19px}.compact.mini .ring{width:32px;height:32px}.compact.mini .bet-value{gap:4px}.compact.mini .side{font-size:9px;padding:3px}.compact.mini .meta,.compact.mini .steps,.compact.mini .step-labels,.compact.mini .cards-result{display:none}.compact.mini .statusline{font-size:10px;line-height:12px;height:24px;margin-top:2px}.compact.mini .stats{height:34px;padding:4px 6px;border-radius:6px}.compact.mini .stats small{font-size:9px;margin-bottom:2px}.compact.mini .stats strong{font-size:11px}.compact.mini .compact-actions{height:30px;gap:5px}.compact.mini .compact-actions button{height:30px;font-size:10px}.compact.mini .compact-actions #open-report{flex:.75}\n\n.compact.mini #overview-page{gap:4px}.compact.mini .hero{height:80px}.compact.mini .statusline{height:20px;line-height:10px}.compact.mini .stats{height:32px}.compact.mini .stats small{font-size:8px}\n\n.compact.mini .tools #nav-overview,.compact.mini .tools #nav-settings,.compact.mini .tools #nav-logs,.compact.mini .tools #nav-mode,.compact.mini .tools #zoom-in,.compact.mini .tools #hide{display:none}.compact.mini .bet-value{min-width:0}.compact.mini .stats>div{min-width:0}\n\n.compact.mini .topline{width:100%;justify-content:space-between}.compact.mini .tools{flex:none;width:31px}\n";
@@ -1197,7 +1253,7 @@ button:disabled { filter: saturate(.45); cursor: not-allowed; }
   // lib/official-turnover-panel.ts
   var OFFICIAL_TURNOVER_HTML = `<section class="official-turnover" aria-label="\u5E73\u53F0\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u6D41\u6C34">
   <div class="turnover-values"><div><small>\u4ECA\u65E5\u6D41\u6C34</small><strong id="official-today">\u5F85\u540C\u6B65</strong></div><div><small>\u8FD17\u65E5\u6D41\u6C34</small><strong id="official-week">\u5F85\u540C\u6B65</strong></div></div>
-  <span class="turnover-source" id="official-source">\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u984D \xB7 \u975E\u672C\u5DE5\u5177\u6CE8\u984D\u4F30\u7B97</span>
+  <div class="turnover-footer"><span class="turnover-source" id="official-source">\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u984D \xB7 \u975E\u672C\u5DE5\u5177\u6CE8\u984D\u4F30\u7B97</span><button id="official-refresh" type="button" aria-label="\u66F4\u65B0\u5E73\u53F0\u5B98\u65B9\u6709\u6548\u6D41\u6C34">\u66F4\u65B0</button></div>
 </section>`;
   var OFFICIAL_TURNOVER_REPORT_HTML = `<div class="report-official-turnover"><small>\u5E73\u53F0\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u6D41\u6C34</small><div><span>\u4ECA\u65E5 <strong id="report-official-today">\u5F85\u540C\u6B65</strong></span><span>\u8FD17\u65E5 <strong id="report-official-week">\u5F85\u540C\u6B65</strong></span></div><p id="report-official-source">\u8207\u4E0B\u65B9\u672C\u5DE5\u5177\u4E0B\u6CE8\u7D00\u9304\u5206\u958B\u7D71\u8A08</p></div>`;
   var OFFICIAL_TURNOVER_CSS = `
@@ -1206,7 +1262,7 @@ button:disabled { filter: saturate(.45); cursor: not-allowed; }
 .turnover-values small{display:block;font-size:9px;color:#aac1cb;margin-bottom:3px;}
 .turnover-values strong{display:block;font-size:13px;line-height:17px;color:#d6ece4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .turnover-values>div+div{border-left:1px solid #607f8738;padding-left:12px;}
-.turnover-source{display:block;font-size:8px;line-height:12px;color:#98adb8;margin-top:4px;}
+.turnover-footer{display:flex;align-items:center;gap:5px}.turnover-footer .turnover-source{flex:1;min-width:0}#official-refresh{flex:none;min-width:32px;min-height:26px;font-size:9px;border:1px solid #8cabb344;border-radius:5px;padding:3px 5px;background:#263f44;color:#c9e4df}.turnover-source{display:block;font-size:8px;line-height:12px;color:#98adb8;margin-top:4px;}
 #panel.compact:not(.mini) .official-turnover{padding:6px 8px;}
 #panel.compact:not(.mini) .chart-wrap{height:66px;}
 #panel.compact:not(.mini) .chart{height:25px;margin:3px 0;}
@@ -1261,7 +1317,8 @@ button:disabled { filter: saturate(.45); cursor: not-allowed; }
     const source = q("official-source");
     const note = q("report-official-source");
     if (source) {
-      source.textContent = "\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u984D \xB7 \u975E\u672C\u5DE5\u5177\u6CE8\u984D\u4F30\u7B97";
+      const pending = view && (view.today.value === null || view.week.value === null);
+      source.textContent = pending ? view.today.status === view.week.status ? view.today.status : `\u4ECA\u65E5\uFF1A${view.today.status}\uFF5C\u8FD17\u65E5\uFF1A${view.week.status}` : "\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u984D \xB7 \u975E\u672C\u5DE5\u5177\u6CE8\u984D\u4F30\u7B97";
       source.title = view ? `${view.today.scope}\uFF1B${view.today.status}\uFF1B${view.week.status}` : "\u7B49\u5F85\u5B98\u65B9\u4F86\u6E90";
     }
     if (note) note.textContent = `${view?.today.scope ?? "\u5B98\u65B9\u5831\u8868"}\uFF1B\u8FD17\u65E5\u4F9D\u5E73\u53F0\u671F\u9593\uFF0C\u8207\u672C\u5DE5\u5177\u4E0B\u6CE8\u7D00\u9304\u5206\u958B\u7D71\u8A08\u3002`;
@@ -1279,6 +1336,7 @@ ${DG_SPACIOUS_CSS}
 ${DG_SURFACES_CSS}
 ${DG_SMALL_CSS}
 ${OFFICIAL_TURNOVER_CSS}
+${DG_MOBILE_LAYOUT_CSS}
 .doubling-reminder{border-left:3px solid #cba86a;border-radius:5px;padding:8px 9px;background:#a4793324;color:#e6c995;font-size:10px;line-height:1.6;margin:8px 0;}
 </style>
 
@@ -1543,6 +1601,8 @@ ${OFFICIAL_TURNOVER_CSS}
 
   // lib/dg-provider-logos.ts
   var DG_PROVIDER_LOGOS = { "chatgpt": '<svg fill="currentColor" fill-rule="evenodd" height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>OpenAI</title><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"></path></svg>', "gemini": '<svg height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>Gemini</title><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="#3186FF"></path><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="url(#lobe-icons-gemini-0-_R_0_)"></path><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="url(#lobe-icons-gemini-1-_R_0_)"></path><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="url(#lobe-icons-gemini-2-_R_0_)"></path><defs><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-gemini-0-_R_0_" x1="7" x2="11" y1="15.5" y2="12"><stop stop-color="#08B962"></stop><stop offset="1" stop-color="#08B962" stop-opacity="0"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-gemini-1-_R_0_" x1="8" x2="11.5" y1="5.5" y2="11"><stop stop-color="#F94543"></stop><stop offset="1" stop-color="#F94543" stop-opacity="0"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-gemini-2-_R_0_" x1="3.5" x2="17.5" y1="13.5" y2="12"><stop stop-color="#FABC12"></stop><stop offset=".46" stop-color="#FABC12" stop-opacity="0"></stop></linearGradient></defs></svg>', "grok": '<svg fill="currentColor" fill-rule="evenodd" height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>Grok</title><path d="M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815"></path></svg>', "meta": '<svg height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>MetaAI</title><path d="M10.547.232c.776-.086 1.543.244 2.152.712.784.598 1.375 1.434 1.757 2.347.19.444.3.92.345 1.402.01.384.024.781-.108 1.148-.126.406-.362.795-.728 1.017-.352.236-.786.3-1.199.288-.84-.073-1.613-.52-2.212-1.106-.15-.1-.236-.263-.368-.38-.801-.97-1.394-2.203-1.324-3.496.048-.698.38-1.44 1.03-1.75.206-.1.428-.164.655-.182z" fill="url(#lobe-icons-meta-ai-0-_R_0_)"></path><path d="M18.595 3.077c.52-.045 1.032.186 1.4.551.402.434.625 1.006.736 1.584.096.605.09 1.233-.048 1.83a5.97 5.97 0 01-.907 2.19c-.198.25-.382.519-.633.719-.493.45-1.181.725-1.848.598-.42-.08-.819-.306-1.085-.646-.514-.591-.687-1.403-.714-2.17a6.11 6.11 0 011.03-3.285c.237-.314.49-.62.797-.867.375-.27.805-.486 1.272-.504z" fill="url(#lobe-icons-meta-ai-1-_R_0_)"></path><path d="M5.038 4.172c.618-.045 1.238.067 1.832.235.871.28 1.741.78 2.182 1.624.177.383.256.826.152 1.242-.097.442-.375.816-.71 1.105-.724.59-1.664.84-2.577.887a5.356 5.356 0 01-2.881-.675c-.39-.248-.765-.539-1.025-.93a1.9 1.9 0 01-.327-1.283c.067-.507.357-.968.741-1.289.723-.62 1.684-.873 2.613-.916z" fill="url(#lobe-icons-meta-ai-2-_R_0_)"></path><path d="M4.87 10.369c.69-.06 1.465.223 1.811.866.213.349.278.763.29 1.166.006.528-.136 1.046-.34 1.529-.34.793-.893 1.478-1.538 2.036-.64.538-1.42.951-2.26 1.015a2.031 2.031 0 01-1.467-.398c-.353-.281-.578-.707-.662-1.15-.156-.8.077-1.62.445-2.327.196-.377.444-.724.72-1.044.767-.886 1.814-1.608 3.001-1.693z" fill="url(#lobe-icons-meta-ai-3-_R_0_)"></path><path d="M20.391 11.05c.881-.087 1.872.116 2.477.822.473.58.534 1.425.239 2.102-.118.317-.32.59-.527.852-.877.962-2.11 1.553-3.379 1.744-.818.123-1.723.036-2.406-.477-.2-.161-.386-.346-.514-.573-.277-.436-.321-.994-.216-1.492.224-.904.92-1.594 1.676-2.073a5.874 5.874 0 012.65-.905z" fill="url(#lobe-icons-meta-ai-4-_R_0_)"></path><path d="M7.553 15.523c.381-.052.775.004 1.118.184.344.154.613.427.866.702.866 1.097 1.267 2.549 1.146 3.944a4.476 4.476 0 01-.497 1.61c-.273.469-.663.91-1.187 1.08-.35.103-.731.118-1.077-.005a2.53 2.53 0 01-.959-.612c-.798-.859-1.236-2.02-1.343-3.185-.055-.646-.006-1.31.21-1.923.146-.471.384-.92.738-1.265.261-.277.62-.452.985-.53z" fill="url(#lobe-icons-meta-ai-5-_R_0_)"></path><path d="M13.637 16.5a4.237 4.237 0 011.82.219c.795.286 1.542.724 2.148 1.323.535.504.963 1.162 1.099 1.899.055.379.038.785-.122 1.138-.19.465-.599.807-1.051.996-.883.364-1.887.253-2.76-.082a5.568 5.568 0 01-2.343-1.685c-.347-.445-.616-.968-.697-1.534-.042-.382-.036-.788.13-1.142.194-.418.55-.76.978-.925.25-.119.525-.174.798-.207z" fill="url(#lobe-icons-meta-ai-6-_R_0_)"></path><defs><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-0-_R_0_" x1="9.789" x2="13" y1="0" y2="7.5"><stop stop-color="#C65EFF"></stop><stop offset=".5" stop-color="#EA4FFF"></stop><stop offset="1" stop-color="#9553FF"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-1-_R_0_" x1="19" x2="17" y1="3" y2="10.5"><stop stop-color="#CF72FF"></stop><stop offset=".5" stop-color="#E541FF"></stop><stop offset="1" stop-color="#944DFF"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-2-_R_0_" x1="9" x2="2.5" y1="6.5" y2="8"><stop stop-color="#A555FF"></stop><stop offset=".5" stop-color="#DE67FF"></stop><stop offset="1" stop-color="#E581FF"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-3-_R_0_" x1="1" x2="6" y1="12" y2="16"><stop stop-color="#6C48FF"></stop><stop offset=".309" stop-color="#AA5AFF"></stop><stop offset="1" stop-color="#5145FF"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-4-_R_0_" x1="19" x2="21" y1="11.5" y2="16.5"><stop stop-color="#CA3EFF"></stop><stop offset=".5" stop-color="#AB5CFF"></stop><stop offset="1" stop-color="#5042FF"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-5-_R_0_" x1="6" x2="11" y1="20.5" y2="19"><stop stop-color="#5041FF"></stop><stop offset=".26" stop-color="#734FFF"></stop><stop offset=".75" stop-color="#6A4CFF"></stop><stop offset="1" stop-color="#483FFF"></stop></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="lobe-icons-meta-ai-6-_R_0_" x1="12" x2="18.5" y1="17.5" y2="21.5"><stop stop-color="#7B51FF"></stop><stop offset=".475" stop-color="#6049FF"></stop><stop offset="1" stop-color="#8466FF"></stop></linearGradient></defs></svg>', "combined": '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="8" y="8" width="8" height="8" rx="2"/><path d="M10 3v5M14 3v5M10 16v5M14 16v5M3 10h5M3 14h5M16 10h5M16 14h5"/><circle cx="12" cy="12" r="1.5"/></svg>', "road": '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="14" cy="5" r="2"/><circle cx="14" cy="12" r="2"/><path d="M18 18h3M20 16v4"/></svg>' };
+  DG_PROVIDER_LOGOS.counting = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M8 6h8M8 10h2M14 10h2M8 14h2M14 14h2M8 18h2M14 18h2"/></svg>';
+  DG_PROVIDER_LOGOS.parity = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="18" cy="6" r="3" fill="currentColor"/><circle cx="6" cy="18" r="3" fill="currentColor"/><path d="M10 12h4"/></svg>';
 
   // lib/dg-provider-menu.ts
   function installDgProviderMenu(shadow, options) {
@@ -1781,7 +1841,7 @@ ${OFFICIAL_TURNOVER_CSS}
     if (!zeroOrMissing(bean.lobbyId) || !zeroOrMissing(bean.tableId)) return false;
     if (Array.isArray(bean.list)) {
       const list = bean.list;
-      if (list.length !== 4 || list[0] !== "" || list[1] !== "" || String(list[2]) !== "12" || String(list[3]) !== "1") return false;
+      if (list.length && (list.length !== 4 || list[0] !== "" || list[1] !== "" || String(list[2]) !== "12" || String(list[3]) !== "1")) return false;
     }
     return true;
   }
@@ -1818,7 +1878,7 @@ ${OFFICIAL_TURNOVER_CSS}
     let timeout = null;
     let lastCycleAt = 0;
     let reconciliationRequired = false;
-    const interval = setInterval(() => refresh(false), DG_OFFICIAL_REFRESH_MS);
+    const interval = setInterval(() => refresh(false), 1e3);
     function safeAccountIdentity() {
       let account = null;
       try {
@@ -1963,6 +2023,7 @@ ${OFFICIAL_TURNOVER_CSS}
       if (!runtime || !attach(runtime)) {
         update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5831\u8868\u5C31\u7DD2", updatedAt: null });
         remaining = [];
+        lastCycleAt = 0;
         return;
       }
       let suppliedAccount;
@@ -1979,11 +2040,13 @@ ${OFFICIAL_TURNOVER_CSS}
       if (runtime.socket.socket?.connected === false) {
         update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5831\u8868\u9023\u7DDA", updatedAt: null });
         remaining = [];
+        lastCycleAt = 0;
         return;
       }
       if (runtime.playerInfo.token === void 0 || runtime.playerInfo.token === null || runtime.playerInfo.token === "") {
         update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5E33\u865F\u5C31\u7DD2", updatedAt: null });
         remaining = [];
+        lastCycleAt = 0;
         return;
       }
       const request = {
@@ -2059,35 +2122,13 @@ ${OFFICIAL_TURNOVER_CSS}
       return void 0;
     }
   }
-  function sceneNodes(stage) {
-    const output = [];
-    const seen = /* @__PURE__ */ new Set();
-    const queue = [stage];
-    while (queue.length && output.length < 12e3) {
-      const value = queue.pop();
-      if (!isRecord(value) || seen.has(value)) continue;
-      if (value.destroyed) continue;
-      seen.add(value);
-      output.push(value);
-      const count = Math.min(Math.max(0, Number(value.numChildren) || 0), 1e3);
-      const getChildAt = safeProperty(value, "getChildAt");
-      if (typeof getChildAt !== "function") continue;
-      for (let index = 0; index < count; index++) {
-        try {
-          queue.push(getChildAt.call(value, index));
-        } catch {
-        }
-      }
-    }
-    return output;
-  }
   function isDgMultiLobbyCard(value) {
     if (!isRecord(value)) return false;
     const gameInfo = safeProperty(value, "gameInfo");
     const betBtn = safeProperty(value, "betBtn");
     const betMan = safeProperty(value, "betMan");
     const socketMan = safeProperty(safeProperty(value, "playerInfo"), "socketMan");
-    return value.tableId !== void 0 && isRecord(gameInfo) && isRecord(betBtn) && betBtn.Banker !== void 0 && betBtn.Player !== void 0 && isRecord(betMan) && typeof betMan.confirm === "function" && typeof betMan.cancel === "function" && isRecord(safeProperty(value, "betMoneyTmp")) && isRecord(safeProperty(value, "betMoneyTrue")) && typeof safeProperty(value, "confirmBet") === "function" && isRecord(socketMan) && typeof socketMan.sendData === "function";
+    return value.tableId !== void 0 && isRecord(gameInfo) && isRecord(betBtn) && betBtn.Banker !== void 0 && betBtn.Player !== void 0 && isRecord(betMan) && [betMan.confirm, betMan.cancel].every((control) => typeof control === "function" || isRecord(control) && typeof safeProperty(control, "event") === "function") && isRecord(safeProperty(value, "betMoneyTmp")) && isRecord(safeProperty(value, "betMoneyTrue")) && typeof safeProperty(value, "confirmBet") === "function" && isRecord(socketMan) && typeof socketMan.sendData === "function";
   }
   function hasDgVerifiedDirectPacketBuilder(card) {
     if (!isDgMultiLobbyCard(card)) return false;
@@ -2108,7 +2149,7 @@ ${OFFICIAL_TURNOVER_CSS}
     if (!isRecord(stage) || typeof safeProperty(stage, "getChildAt") !== "function") {
       return { readiness: "waiting-stage", portrait, cardCount: 0, rejectedCardCount: 0 };
     }
-    const cards = sceneNodes(stage).filter(isDgMultiLobbyCard);
+    const cards = readDgSceneNodes(stage).filter((node) => isDgMultiLobbyCard(node) && dgSceneNodeVisible(node));
     if (!cards.length) return { readiness: "waiting-multi-table", portrait, cardCount: 0, rejectedCardCount: 0 };
     const rejectedCardCount = cards.filter((card) => !hasDgVerifiedDirectPacketBuilder(card)).length;
     return {
@@ -2270,22 +2311,9 @@ ${OFFICIAL_TURNOVER_CSS}
         }
       }
     }
-    function visible(n) {
-      if (!n || n.destroyed) return false;
-      for (let x = n; x; x = x.parent) if (x.visible === false || x.alpha === 0) return false;
-      return true;
-    }
+    const visible = dgSceneNodeVisible;
     function nodes() {
-      const result = [], stack = [L.stage], seen = /* @__PURE__ */ new Set();
-      while (stack.length && result.length < 12e3) {
-        const n = stack.pop();
-        if (!n || seen.has(n) || n.destroyed) continue;
-        seen.add(n);
-        result.push(n);
-        const count = Number(n.numChildren ?? 0);
-        for (let i = 0; i < count; i++) stack.push(n.getChildAt(i));
-      }
-      return result;
+      return readDgSceneNodes(L.stage);
     }
     function boards(all = nodes()) {
       const unique = /* @__PURE__ */ new Map();
@@ -2398,6 +2426,7 @@ ${OFFICIAL_TURNOVER_CSS}
           if (reason) stop(reason);
         }
         window.dispatchEvent(new CustomEvent("dg-singlepage-settlement", { detail: { ...settled.bet, nextLevel: settled.nextLevel } }));
+        window.setTimeout(() => official.refresh(true), 800);
       }
     }
     function migrateSingleChain() {
@@ -2753,7 +2782,7 @@ ${OFFICIAL_TURNOVER_CSS}
       const fullHeight = Math.min(panelHeight, Math.max(280, (window.innerHeight - top - 16) / Math.max(0.2, widthScale)));
       host.style.setProperty("--full-height", fullHeight + "px");
       host.style.setProperty("--full-width", panelWidth + "px");
-      const height = mini && !overlay ? 228 : fullHeight;
+      const height = mini && !overlay ? Math.max(228, q("panel").scrollHeight) : fullHeight;
       const scale = Math.min(widthScale, (window.innerHeight - top - 12) / height);
       host.style.setProperty("--fit", String(Math.max(0.2, scale)));
       q("zoom-label").textContent = `${Math.round(scale * 100)}%`;
@@ -3137,6 +3166,7 @@ ${OFFICIAL_TURNOVER_CSS}
       showPage("overview");
       render();
     };
+    q("official-refresh").onclick = () => official.refresh(true);
     q("open-records").onclick = q("open-report").onclick = openReport;
     q("compact-stop").onclick = () => q("stop-now").click();
     q("close-report").onclick = () => {
@@ -3194,7 +3224,7 @@ ${OFFICIAL_TURNOVER_CSS}
         }
       }
     };
-    head.onpointerup = head.onpointercancel = () => {
+    head.onpointerup = head.onpointercancel = head.onlostpointercapture = () => {
       drag = null;
     };
     const cleanupResize = installDgPanelResize([q("resize-panel"), q("resize-report")], {

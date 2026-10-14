@@ -20,7 +20,7 @@ function compatibleCard() {
   return {
     tableId: "RB02", gameInfo: { gameNo: "round-2", stateId: 1 },
     playerInfo: { socketMan: { sendData() {} } }, betBtn: { Banker: {}, Player: {} },
-    betMan: { confirm() {}, cancel() {} }, betMoneyTmp: { Banker: 0, Player: 0 },
+    betMan: { confirm: {event() {}}, cancel: {event() {}} }, betMoneyTmp: { Banker: 0, Player: 0 },
     betMoneyTrue: { Banker: 0, Player: 0 }, confirmBet: nativeConfirmBet,
   };
 }
@@ -86,4 +86,20 @@ describe("DG Mobile native installer", () => {
     expect(ensureDgMultiHall(frame, "mobile")).toBe("unavailable");
     expect(installDgFramePanel(frame, "mobile")).toBe("blocked");
   });
+  it("recognizes native GoodRoad cards even without a MultiLobby viewName", () => {
+    vi.stubGlobal("window", { location: { origin: "https://app.example" } });
+    const card=compatibleCard(), click=vi.fn();
+    const frame:any={contentWindow:{Laya:{stage:stage(card)}},contentDocument:{location:{origin:"https://app.example"}}};
+    expect(ensureDgMultiHall(frame,"desktop")).toBe("ready");
+    expect(click).not.toHaveBeenCalled();
+  });
+  it("checks controllers before deep road glyphs exhaust the traversal budget", () => {
+    vi.stubGlobal("window", { location: { origin: "https://app.example" } });
+    const click=vi.fn(), controller={currentView:{viewName:"GameLobby"},playerInfo:{layout:0},gameLeftMan:{classicBtnArr:[{buttonName:"MultiLobby",gameId:0,event:click}]}};
+    let road:any=stage();for(let i=0;i<13000;i++)road=stage(road);
+    const frame:any={contentWindow:{Laya:{stage:stage(controller,road)}},contentDocument:{location:{origin:"https://app.example"}}};
+    expect(ensureDgMultiHall(frame,"desktop")).toBe("requested");
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
 });

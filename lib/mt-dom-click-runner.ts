@@ -324,7 +324,7 @@ export function createMtDomClickRunner(W:any, preview:(report:any,name:string,pr
   function view(){
     const r=report(),rows=r?.tableViewport?.tables||[];
     const current=pending()[0];
-    return {running,busy:!!active,message,config:{...copy(state.config),staking:mode()},nextAmount:current?.amount??previewAmount(),pnl:pnl(),level:state.level,pending:pending().length,bets:copy(state.bets),sessionBets:copy(state.bets.slice(state.sessionStart)),selectedNames:selectedNames(r),balance:typeof r?.memberBalance==='number'?r.memberBalance:null,logs:copy(logs),previews:rows.map((x:any)=>preview(r,x.name,state.config.provider,Date.now()))};
+    return {running,busy:!!active,message,config:{...copy(state.config),staking:mode()},nextAmount:current?.amount??previewAmount(),pnl:pnl(),level:state.level,pending:pending().length,bets:copy(state.bets),sessionBets:copy(state.bets.slice(state.sessionStart)),selectedNames:selectedNames(r),balance:typeof r?.betObservation?.memberBalance==='number'&&Number.isFinite(r.betObservation.memberBalance)?r.betObservation.memberBalance:null,logs:copy(logs),previews:rows.map((x:any)=>preview(r,x.name,state.config.provider,Date.now()))};
   }
   return {configure,start,stop,halt,dispose,tick,view,state:()=>copy(state),subscribe:(fn:()=>void)=>{onChange=fn;},isBusy:()=>!!active,money};
 }

@@ -4,7 +4,7 @@ type Result = '莊' | '閒' | '和';
 type AiProvider = 'chatgpt' | 'gemini' | 'grok' | 'meta' | 'combined' | 'road';
 type TableData = {results:Result[]};
 const AI_PROVIDER_OPTIONS: Array<{
-  key: AiProvider;
+  key: AiProvider | 'counting' | 'parity';
   label: string;
 }> = [
   { key: "chatgpt", label: "ChatGPT" },
@@ -16,6 +16,7 @@ const AI_PROVIDER_OPTIONS: Array<{
 ];
 
 
+AI_PROVIDER_OPTIONS.push({key:'counting',label:'V38 四式算牌'},{key:'parity',label:'奇偶策略'});
 type PatternInfo = {
   type:
     "資料累積中" | "一房兩廳" | "單跳" | "雙跳" | "連龍" | "一般連" | "混合";

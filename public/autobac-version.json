@@ -1,0 +1,9 @@
+{
+  "version": "3.2",
+  "release": "integrated-mobile-turnover-fixes",
+  "releaseDate": "2026-10-14",
+  "platforms": ["DG", "MT"],
+  "strategyMenuCount": 8,
+  "initialState": "stopped",
+  "verification": "offline-regression; live-device-validation-required"
+}

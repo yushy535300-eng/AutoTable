@@ -153,7 +153,7 @@ export function mountMtClickPanel(
   runner: ReturnType<typeof createMtDomClickRunner>,
   feed: { refresh: (force?: boolean) => boolean; status: () => string },
   onRemove: () => Promise<void>,
-  official?: { view: () => OfficialTurnoverView },
+  official?: { view: () => OfficialTurnoverView; refresh?: (force?: boolean) => unknown; subscribe?: (callback: () => void) => (() => void) },
 ) {
   const existing = W.document.getElementById('__autobac_mt_click__');
   if (existing) existing.remove();
@@ -177,6 +177,7 @@ export function mountMtClickPanel(
   }
 
   let disposed = false;
+  let lastOfficialSettledCount = 0;
   let mini = false;
   let compact = true;
   let miniPreviousCompact = false;
@@ -399,7 +400,7 @@ export function mountMtClickPanel(
     const baseWidth = mini && !overlay ? 210 : panelWidth;
     const widthScale = Math.min(userZoom, Math.max(0.2, (W.innerWidth - 24) / baseWidth));
     const fullHeight = Math.min(panelHeight, Math.max(360, (W.innerHeight - top - 16) / Math.max(0.2, widthScale)));
-    const height = mini && !overlay ? 228 : fullHeight;
+    const height = mini && !overlay ? Math.max(228, panel.scrollHeight) : fullHeight;
     const scale = Math.max(0.2, Math.min(widthScale, (W.innerHeight - top - 12) / height));
     host.style.setProperty('--full-width', `${panelWidth}px`);
     host.style.setProperty('--full-height', `${fullHeight}px`);
@@ -618,6 +619,7 @@ export function mountMtClickPanel(
     const names = selectedPreviewNames(view);
     const focus = current ? previewFor(view, current.tableName) : previewFor(view, names[0]) ?? view.previews.find((preview) => preview.ok && preview.canBet) ?? view.previews.find((preview) => preview.ok);
     const settled = sessionBets(view).filter((bet) => bet.state === 'settled' && Number.isFinite(bet.pnl));
+    if(settled.length!==lastOfficialSettledCount){lastOfficialSettledCount=settled.length;window.setTimeout(()=>{if(!disposed)official?.refresh?.(true);},800);}
     const settledData = dataBets(settled);
     const chart = chartSummary(settledData);
     const roundPnl = settled.reduce((sum, bet) => sum + (bet.pnl ?? 0), 0);
@@ -630,7 +632,7 @@ export function mountMtClickPanel(
     const multiplier = shownStaking === 'doubling' ? 2 ** shownLevel : shownStaking === 'martingale' ? 2 ** (shownLevel + 1) - 1 : 1;
 
     q('brand-count').textContent = '百家工程師';
-    q('balance').textContent = numberText(view.balance);
+    q('balance').textContent = typeof view.balance === 'number' && Number.isFinite(view.balance) ? numberText(view.balance) : '待同步';
     q('mini-balance').textContent = q('balance').textContent;
     q('mini-running').textContent = `${view.running ? '執行中' : view.pending ? '待結算' : '已停止'} · ${manualSelection ? '指定桌' : '自動找桌'}`;
     q('run-pill').textContent = view.running ? '● 自動下注中' : view.pending ? '● 待結算' : '● 已停止';
@@ -891,6 +893,7 @@ export function mountMtClickPanel(
     renderReport();
     fitPanel();
   }
+  q('official-refresh').onclick=()=>official?.refresh?.(true);
   q('open-records').onclick = openReport;
   q('open-report').onclick = openReport;
   q('close-report').onclick = () => {
@@ -985,8 +988,11 @@ export function mountMtClickPanel(
     },
   });
 
+  const walletChanged = () => { if (!disposed) render(); };
+  W.addEventListener('autobac:mt-wallet-updated', walletChanged);
   const resize = () => fitPanel();
   W.addEventListener('resize', resize);
+  const unsubscribeOfficial = official?.subscribe?.(() => { if (!disposed) render(); });
   runner.subscribe(() => {
     try { render(); } catch (error) {
       lastError = String((error as Error).message || error);
@@ -997,10 +1003,12 @@ export function mountMtClickPanel(
   function remove() {
     if (disposed) return;
     disposed = true;
+    unsubscribeOfficial?.();
     cleanupFeedback();
     cleanupResize();
     providerMenu.cleanup();
     W.removeEventListener('resize', resize);
+    W.removeEventListener('autobac:mt-wallet-updated', walletChanged);
     host.remove();
     // The console entry owns runner/feed disposal and calls this remove method from it.
     // Keep the callback in the public mount signature without re-entering that lifecycle.

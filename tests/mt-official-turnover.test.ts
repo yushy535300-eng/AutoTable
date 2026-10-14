@@ -14,6 +14,13 @@ const report=(v:unknown)=>({total:{all:{v,p:999999,n:800000}},bets:[{bet_amount:
 describe('MT official turnover',()=>{
  beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date('2026-10-14T09:00:00Z'));});
  afterEach(()=>vi.useRealTimers());
+ it('attaches to an already-established native socket without waiting for another vendor ping',async()=>{
+  const calls:any[]=[];
+  class Socket extends EventTarget{url='wss://a1.ofalive99.net/game/ws';readyState=1;send(raw:string){calls.push(JSON.parse(raw));}}
+  const socket=new Socket(),W:any={WebSocket:Socket,setInterval,clearInterval,setTimeout,queueMicrotask,__AUTOBAC_MT_EARLY_WS__:{sockets:[socket]}};
+  const subject=createMtOfficialTurnover(W);await vi.advanceTimersByTimeAsync(0);
+  expect(calls).toHaveLength(1);expect(calls[0].action.name).toContain('/bet/history');subject.dispose();
+ });
  it('uses full official total.all.v, not principal or P&L, with today/week separate',async()=>{
   const t=fixture();t.socket.send(JSON.stringify({action:{name:'/api/v1/ping'}}));await vi.advanceTimersByTimeAsync(0);
   expect(t.calls[1].body.cur).toBe(1);expect(t.calls[1].body.begin_at).toBe('2026-10-14T00:00:00.000Z');

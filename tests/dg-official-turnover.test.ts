@@ -182,4 +182,17 @@ describe("DG official turnover", () => {
     expect(preexisting).toHaveBeenCalledTimes(2);
     expect(outer).toHaveBeenCalledTimes(1);
   });
+  it("retries first synchronization within one second after a late native scene becomes ready", () => {
+    vi.useFakeTimers();
+    const socket=new FakeSocket(), W:any={Laya:{stage:{numChildren:0,getChildAt:()=>undefined}}};
+    const reader=createDgOfficialTurnover(W,()=>"account-a");
+    reader.refresh(true);expect(socket.sent).toHaveLength(0);
+    W.Laya.stage=host(socket).Laya.stage;
+    vi.advanceTimersByTime(1000);expect(socket.sent).toHaveLength(1);
+    socket.reply(reply(3990,{list:[]}));socket.reply(reply(6535,{list:[]}));
+    expect(reader.view().today.value).toBe(3990);expect(reader.view().week.value).toBe(6535);
+    vi.advanceTimersByTime(5000);expect(socket.sent).toHaveLength(2);
+    reader.dispose();
+  });
+
 });
