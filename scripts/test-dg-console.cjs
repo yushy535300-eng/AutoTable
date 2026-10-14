@@ -44,7 +44,7 @@ const cleanup=t=>{if(!t||t.cleaned)return;t.cleaned=true;t.w.__DG_SINGLEPAGE__?.
   t.socket.event('RECEIVED_SUCCESS',{cmd:1007,tableId:1,gameNo:'r1',dList:[99900,-100]});
   assert.equal(t.w.__DG_SINGLEPAGE__.exportLedger().levels.global,1);
   t.w.eval(source);assert.equal(t.w.document.querySelectorAll('#__dg_singlepage_panel__').length,1);
-  assert.equal(t.socket.events.RECEIVED_SUCCESS.length,1);cleanup(t);
+  assert.equal(t.socket.events.RECEIVED_SUCCESS.length,2,'one wager observer and one read-only official report observer');cleanup(t);
   for(const [value,expected] of [['1',1],['3',3],['5',5],['all',8]]){
    t=await setup({receiptDelay:null});t.choose(value);
    assert.equal(t.q('count').value,value,'總覽與設定選單同步');
@@ -166,6 +166,10 @@ const cleanup=t=>{if(!t||t.cleaned)return;t.cleaned=true;t.w.__DG_SINGLEPAGE__?.
   t.q('single-staking').value='martingale';t.q('single-staking').dispatchEvent(new t.w.Event('change'));assert.equal(t.w.__DG_SINGLEPAGE__.status().staking,'flat','待結算不能修改配注');assert.equal(t.q('single-staking').value,'flat');t.socket.event('RECEIVED_SUCCESS',{cmd:1007,tableId:1,gameNo:'r1',dList:[0,-100]});await delay(650);assert.equal(t.calls[1].tableId,2);assert.equal(t.calls[1].bet.banker6,100,'平注跨房間固定100');cleanup(t);
   for(const value of ['3','5','all']){t=await setup();t.choose(value);assert.equal(t.q('single-staking').value,'flat');assert.equal(t.q('single-staking').disabled,true);t.q('single-staking').value='martingale';t.q('single-staking').dispatchEvent(new t.w.Event('change'));assert.equal(t.q('single-staking').value,'flat');assert.equal(t.w.__DG_SINGLEPAGE__.status().staking,'flat');confirmedStart(t);await delay(100);assert.ok(t.w.__DG_SINGLEPAGE__.exportLedger().bets.every(b=>b.staking==='flat'&&b.amount===100));cleanup(t);}
   t=await setup();t.q('single-staking').value='flat';t.q('single-staking').dispatchEvent(new t.w.Event('change'));t.choose('3');t.choose('1');assert.equal(t.q('single-staking').disabled,false);assert.equal(t.q('single-staking').value,'flat','返回單桌保留原本選擇');cleanup(t);
+  t=await setup({size:4});t.q('single-staking').value='doubling';t.q('single-staking').dispatchEvent(new t.w.Event('change'));assert.equal(t.q('doubling-reminder').hidden,false);t.q('compact-stop').click();assert.equal(t.q('risk-doubling-warning').hidden,false);assert.ok(t.q('risk-doubling-warning').textContent.includes('止盈與止損'));t.q('risk-cancel').click();confirmedStart(t);await delay(100);assert.equal(t.calls[0].bet.banker6,100);
+  t.socket.event('RECEIVED_SUCCESS',{cmd:1007,tableId:1,gameNo:'r1',dList:[0,-100]});await delay(650);assert.equal(t.calls[1].tableId,2);assert.equal(t.calls[1].bet.banker6,200,'倍投跨房間100→200，不是馬丁300');
+  t.socket.event('RECEIVED_SUCCESS',{cmd:1007,tableId:2,gameNo:'r2',dList:[0,-200]});await delay(650);assert.equal(t.calls[2].bet.banker6,400);
+  t.socket.event('RECEIVED_SUCCESS',{cmd:1007,tableId:3,gameNo:'r3',dList:[0,380]});await delay(650);assert.equal(t.calls[3].bet.banker6,100,'倍投贏後重置');cleanup(t);
   console.log('PASS: 1/3/5/all同批不等回覆、單桌升階/多桌平注、單局防重送、批次預留5700、停止、手選限制、選單同步、限額回歸、單例');
  }finally{cleanup(t);}
 })().catch(e=>{console.error(e);process.exitCode=1;});

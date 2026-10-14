@@ -10,12 +10,13 @@
     "dev:web": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 npx expo start --web --port 8081",
     "export:web": "npx expo export --platform web --output-dir web-dist",
     "build:server": "esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist/server",
-    "build": "pnpm build:dg && pnpm export:web && pnpm build:server",
+    "build": "pnpm build:dg && pnpm build:mt && pnpm export:web && pnpm build:server",
     "start": "NODE_ENV=production node dist/server/index.js",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "build:desktop:win": "node scripts/build-desktop-win.mjs",
-    "build:dg": "node scripts/build-dg-console.cjs"
+    "build:dg": "node scripts/build-dg-console.cjs",
+    "build:mt": "node scripts/build-mt-click-console.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

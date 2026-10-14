@@ -27,6 +27,7 @@ import Svg, { Path } from "react-native-svg";
 import * as Linking from "expo-linking";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { ScreenContainer } from "@/components/screen-container";
+import { AutoBacAccess } from "@/components/autobac-access";
 import { trpc } from "@/lib/trpc";
 import {
   applyLiveShowWin,
@@ -2077,17 +2078,19 @@ async function getGameLoginUrlFromPlatform(
   }
 }
 
-async function getMtLoginUrlFromPlatform(
+export async function getMtLoginUrlFromPlatform(
   platform: "TZ" | "OFA",
   token: string,
+  device: "Desktop" | "Mobile" = "Desktop",
 ) {
-  return getGameLoginUrlFromPlatform(platform, token, "MTLI", "Desktop", "MT");
+  return getGameLoginUrlFromPlatform(platform, token, "MTLI", device, "MT");
 }
 export async function getDgLoginUrlFromPlatform(
   platform: "TZ" | "OFA",
   token: string,
+  device: "Desktop" | "Mobile" = "Desktop",
 ) {
-  return getGameLoginUrlFromPlatform(platform, token, "DGLI", "Desktop", "DG");
+  return getGameLoginUrlFromPlatform(platform, token, "DGLI", device, "DG");
 }
 
 async function platformWalletRequest(
@@ -2594,57 +2597,12 @@ export function AccessScreen({
   ) => void;
   notice?: string;
 }) {
-  const { width } = useWindowDimensions();
-  const desktop = width >= 1000;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
-  const playCount = useRef(0);
-  const webVideoRef = useRef<any>(null);
-  const player = useVideoPlayer({ uri: "/poker.mp4" }, (p) => {
-    if (Platform.OS !== "web") {
-      p.loop = false;
-      p.muted = true;
-      p.play();
-    }
-  });
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    const sub = player.addListener("playToEnd", () => {
-      playCount.current += 1;
-      if (playCount.current < 2) {
-        player.currentTime = 0;
-        player.play();
-      } else player.pause();
-    });
-    return () => sub.remove();
-  }, [player]);
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    playCount.current = 0;
-    const video = webVideoRef.current;
-    if (!video) return;
-    video.muted = true;
-    video.defaultMuted = true;
-    video.playsInline = true;
-    video.loop = false;
-    const start = () => {
-      try {
-        const promise = video.play?.();
-        if (promise?.catch) promise.catch(() => undefined);
-      } catch {}
-    };
-    start();
-    const t1 = setTimeout(start, 120);
-    const t2 = setTimeout(start, 600);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, []);
   const login = trpc.trackerAccess.login.useMutation();
   const resolvePlatform = trpc.trackerAccess.resolvePlatform.useMutation();
   const submit = async () => {
@@ -2704,198 +2662,13 @@ export function AccessScreen({
       setError(error?.message || "登入工作階段建立失敗，請重試");
     } finally { submittingRef.current = false; setSubmitting(false); }
   };
-  return (
-    <ScreenContainer
-      edges={["top", "left", "right", "bottom"]}
-      containerClassName="bg-[#020A12]"
-      className="bg-[#020A12]"
-    >
-      <View style={s.loginScreen}>
-        {Platform.OS === "web" ? (
-          createElement("video" as any, {
-            ref: (node: any) => {
-              webVideoRef.current = node;
-            },
-            src: "/poker.mp4",
-            autoPlay: true,
-            muted: true,
-            defaultMuted: true,
-            playsInline: true,
-            preload: "auto",
-            controls: false,
-            disablePictureInPicture: true,
-            style: {
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              pointerEvents: "none",
-            },
-            onLoadedData: (e: any) => {
-              const v = e.currentTarget;
-              v.muted = true;
-              v.defaultMuted = true;
-              void v.play?.().catch?.(() => undefined);
-            },
-            onCanPlay: (e: any) => {
-              const v = e.currentTarget;
-              v.muted = true;
-              void v.play?.().catch?.(() => undefined);
-            },
-            onEnded: (e: any) => {
-              const v = e.currentTarget;
-              playCount.current += 1;
-              if (playCount.current < 2) {
-                v.currentTime = 0;
-                void v.play?.().catch?.(() => undefined);
-              } else {
-                v.pause();
-                try {
-                  v.currentTime = Math.max(0, (v.duration || 0) - 0.05);
-                } catch {}
-              }
-            },
-          })
-        ) : (
-          <VideoView
-            player={player}
-            style={s.loginVideo}
-            contentFit="cover"
-            nativeControls={false}
-          />
-        )}
-        <View style={s.loginShade} />
-        <View style={s.loginPanel}>
-          <View style={s.loginTopline}>
-            <Text style={s.loginTopText}>MT ASSISTANT · ACCESS</Text>
-            <Text style={s.loginSafe}>● 安全驗證</Text>
-          </View>
-          <View style={[s.loginHero, !desktop ? s.loginHeroMobile : null]}>
-            <View style={[s.loginBrand, !desktop ? s.loginBrandMobile : null]}>
-              <View style={[s.loginIcon, !desktop ? s.loginIconMobile : null]}>
-                <MatrixMark size={desktop ? 42 : 32} />
-              </View>
-              <View style={s.loginBrandCopy}>
-                {desktop ? (
-                  <Text style={s.loginKicker}>REAL-TIME CONTROL ROOM</Text>
-                ) : null}
-                <Text
-                  style={[s.loginTitle, !desktop ? s.loginTitleMobile : null]}
-                  numberOfLines={1}
-                >
-                  百家工程師
-                </Text>
-                <Text
-                  style={[s.loginSub, !desktop ? s.loginSubMobile : null]}
-                  numberOfLines={1}
-                >
-                  登入後直接進入 DG
-                </Text>
-              </View>
-            </View>
-            <View style={s.loginHeroDivider} />
-            <View
-              style={[s.threadsCard, !desktop ? s.threadsCardMobile : null]}
-            >
-              <View style={s.threadsHead}>
-                <View style={s.threadsLogo}>
-                  <Text style={s.threadsLogoText}>@</Text>
-                </View>
-                <Text style={s.threadsLabel}>THREADS</Text>
-              </View>
-              <Text style={s.threadsName}>MT工程師</Text>
-              <Text style={s.threadsAccount}>@uss0857</Text>
-              <Pressable
-                style={({ pressed }: any) => [
-                  s.threadsFollow,
-                  pressed && s.threadsFollowPressed,
-                ]}
-                onPress={openThreads}
-              >
-                <MaterialIcons name="add" size={16} color="#EAF8FF" />
-                <Text style={s.threadsFollowText}>FOLLOW</Text>
-              </Pressable>
-            </View>
-          </View>
-          <View style={s.loginDivider} />
-          <View style={s.loginHintRow}>
-            <Text style={s.loginHint} numberOfLines={1}>
-              請輸入 TZ 帳號與密碼，驗證成功直接進入 DG。
-            </Text>
-            <Pressable
-              style={({ pressed }: any) => [
-                s.registerBtn,
-                pressed && s.registerBtnPressed,
-              ]}
-              onPress={openTzRegister}
-            >
-              <Text style={s.registerBtnText}>註冊帳號</Text>
-            </Pressable>
-          </View>
-          {notice ? (
-            <View style={s.kickNoticeBox}>
-              <Text style={s.kickNotice}>⚠ {notice}</Text>
-              <Text style={s.rechargeNotice}>
-                完成儲值後，通知我們即可立即開通。
-              </Text>
-            </View>
-          ) : null}
-          <Text style={s.loginLabel}>TZ 帳號</Text>
-          <TextInput
-            value={username}
-            onChangeText={setUsername}
-            placeholder="輸入 TZ 帳號"
-            placeholderTextColor="#63798B"
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={s.loginInput}
-          />
-          <Text style={s.loginLabel}>TZ 密碼</Text>
-          <View style={s.passwordWrap}>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="輸入密碼"
-              placeholderTextColor="#63798B"
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={s.passwordInput}
-              onSubmitEditing={submit}
-            />
-            <Pressable
-              style={s.eyeBtn}
-              onPress={() => setShowPassword((v) => !v)}
-            >
-              <MaterialIcons
-                name={showPassword ? "visibility-off" : "visibility"}
-                size={19}
-                color="#6F8CA1"
-              />
-            </Pressable>
-          </View>
-          <Pressable style={s.loginBtn} onPress={submit} disabled={submitting}>
-            <MaterialIcons name="verified-user" size={18} color="#fff" />
-            <Text style={s.loginBtnText}>
-              {submitting ? "登入中…" : "登入並進入 DG"}
-            </Text>
-          </Pressable>
-          {error ? <Text style={s.error}>{error}</Text> : null}
-          <View style={s.loginFooterRow}>
-            <View style={s.loginFooterLeft}>
-              <MaterialIcons name="lock" size={11} color="#8EA4B4" />
-              <Text style={s.loginFoot}>密碼只會用於本次登入驗證</Text>
-            </View>
-            <Text style={s.loginFooterDivider}>|</Text>
-            <Pressable onPress={openLineContact}>
-              <Text style={s.loginHelp}>需要協助？LINE 聯絡</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </ScreenContainer>
-  );
+  return <AutoBacAccess
+    username={username} password={password} showPassword={showPassword}
+    submitting={submitting} error={error} notice={notice}
+    onUsername={setUsername} onPassword={setPassword}
+    onTogglePassword={() => setShowPassword(value => !value)}
+    onSubmit={() => { void submit(); }}
+  />;
 }
 
 function applyDealerRealtime(current: TableData[], payload: any): TableData[] {

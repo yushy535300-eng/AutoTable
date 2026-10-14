@@ -14,6 +14,7 @@ import { startDgRelay, getDgRelay, stopDgRelay, findDgRelayByToken, sweepIdleDgR
 import { startSaRelay, getSaRelay, stopSaRelay, sweepIdleSaRelays, ensureSaRelayShell } from "../sa-relay";
 import { startT9Relay, getT9Relay, stopT9Relay, sweepIdleT9Relays, ensureT9RelayShell } from "../t9-relay";
 import { registerDgGameProxy } from "../dg-game-proxy";
+import { registerMtGameProxy } from "../mt-game-proxy";
 import { registerExternalGameProxy } from "../external-game-proxy";
 import { extractSaAuth } from "../sa-protocol";
 import {
@@ -34,8 +35,10 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
   // Foreground same-session proxies. These are intentionally registered
-  // before the app's static catch-all. MT routes / sockets are untouched.
+  // before the app's static catch-all. MT only proxies its fixed HTTP asset
+  // origin; its authenticated vendor WebSocket remains native and untouched.
   registerDgGameProxy({ app, server, hasActiveSession: hasActiveTrackerSession, getRelay: getDgRelay });
+  registerMtGameProxy({ app, hasActiveSession: hasActiveTrackerSession });
   // SA / 美女直播: strip X-Frame and serve vendor SPA same-origin so iframe works.
   // SA proxy WS frames are mirrored into the SA road relay while the iframe is open.
   registerExternalGameProxy({
@@ -772,6 +775,13 @@ async function startServer() {
   const publicDir = path.resolve(
     process.env.MT_PUBLIC_DIR || path.resolve(__dirname, "../../public"),
   );
+  // The MT foreground proxy injects this official source from the app origin.
+  // It is deliberately no-store: the source observes a private native session.
+  app.get("/mt-native-click-console.js", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return res.sendFile(path.join(publicDir, "mt-native-click-console.js"));
+  });
   // Streamer avatars for 美女直播 cards (same-origin; score777 CDN is CF-blocked here).
   app.use(
     "/mv-hosts",

@@ -4,7 +4,7 @@ export type DgBet = {
   key: string; tableId: string; gameNo: string; side: DgSide; amount: number;
   level: number; scope: DgScope; state: 'reserved' | 'submitted' | 'accepted' | 'rejected' | 'uncertain' | 'settled' | 'aborted';
   createdAt: number; submittedAt?: number; acceptedAt?: number; settledAt?: number; pnl?: number;
-  staking?: 'martingale' | 'flat';
+  staking?: 'martingale' | 'flat' | 'doubling';
   provider?: string;
 };
 export type DgLedgerState = {version:1; levels:Record<string,number>; bets:DgBet[]; roundStartedAt?:number};
@@ -13,6 +13,16 @@ export function martingaleAmount(base:number, level:number):number {
   const amount=base*(2**(level+1)-1);
   if (!Number.isSafeInteger(amount)) throw new Error('馬丁金額超出整數範圍');
   return amount;
+}
+/** Classic doubling: 1, 2, 4, 8; unlike the existing 1, 3, 7, 15 Martingale. */
+export function doublingAmount(base:number, level:number):number {
+  if(!Number.isSafeInteger(base)||base<=0||!Number.isInteger(level)||level<0||level>30)throw Error('基本金額／階級無效');
+  const amount=base*2**level;
+  if(!Number.isSafeInteger(amount))throw Error('倍投金額超出整數範圍');
+  return amount;
+}
+export function stakingAmount(base:number,level:number,staking:'flat'|'martingale'|'doubling'):number {
+  return staking==='doubling'?doublingAmount(base,level):martingaleAmount(base,staking==='flat'?0:level);
 }
 export class DgBetLedger {
   state:DgLedgerState;
@@ -26,12 +36,12 @@ export class DgBetLedger {
     if(this.pending().length)throw new Error('仍有待接受／待結算或未確定下注，不能重設配注階級');
     this.state.levels={};
   }
-  reserve(tableId:string,gameNo:string,side:DgSide,base:number,scope:DgScope,staking:'martingale'|'flat'='martingale') {
+  reserve(tableId:string,gameNo:string,side:DgSide,base:number,scope:DgScope,staking:'martingale'|'flat'|'doubling'='martingale') {
     const key=`${tableId}:${gameNo}`;
     if (!tableId || !gameNo || this.state.bets.some(b=>b.key===key)) throw new Error('局號缺失或本局已操作');
     if (this.pending().some(b=>scope==='global'||b.scope==='global'||b.tableId===tableId)) throw new Error('上一笔仍待結算');
     const level=this.level(tableId,scope);
-    const amount=martingaleAmount(base,staking==='flat'?0:level);
+    const amount=stakingAmount(base,level,staking);
     const bet:DgBet={key,tableId,gameNo,side,amount,level,scope,staking,state:'reserved',createdAt:Date.now()};
     this.state.bets.push(bet);return bet;
   }

@@ -1,10 +1,13 @@
 import { DG_CONSOLE_SOURCE } from './dg-console-source';
+import { exportDgMobileLoadedPublicScripts, type DgMobilePublicSourceManifest } from './dg-mobile-public-source';
+import { inspectDgMobileNativeSurface, type DgMobileNativeProbe } from './dg-mobile-native';
 
 export type DgFrame = { contentWindow: any; contentDocument: Document | null };
 export type DgInstallResult = 'waiting' | 'installed' | 'cross-origin' | 'blocked';
+export type DgInstallMode = 'desktop' | 'mobile';
 
 /** Existing same-origin foreground only; no cross-origin DOM access workaround. */
-export function installDgFramePanel(frame: DgFrame): DgInstallResult {
+export function installDgFramePanel(frame: DgFrame, mode: DgInstallMode = 'desktop'): DgInstallResult {
   let win: any;
   let doc: Document | null;
   try {
@@ -14,6 +17,13 @@ export function installDgFramePanel(frame: DgFrame): DgInstallResult {
     if (doc.location.origin !== window.location.origin) return 'cross-origin';
     if (win.__DG_SINGLEPAGE__) return 'installed';
     if (!win.Laya?.stage?.getChildAt) return 'waiting';
+    if (mode === 'mobile') {
+      // Do not install the PC direct-message console on a merely visual mobile
+      // lookalike. The runtime must retain the documented builder source.
+      const probe = inspectDgMobileNativeSurface(win);
+      if (probe.readiness === 'waiting-stage' || probe.readiness === 'waiting-multi-table') return 'waiting';
+      if (probe.readiness !== 'compatible') return 'blocked';
+    }
   } catch {
     return 'cross-origin';
   }
@@ -26,6 +36,29 @@ export function installDgFramePanel(frame: DgFrame): DgInstallResult {
   } catch {
     return 'blocked';
   }
+}
+
+/** Read-only Mobile-mode gate. No Laya event, socket method, or native UI is invoked. */
+export function dgFrameMobileProbe(frame: DgFrame | null): DgMobileNativeProbe | null {
+  if (!frame) return null;
+  try {
+    if (!frame.contentDocument || frame.contentDocument.location.origin !== window.location.origin) return null;
+    return inspectDgMobileNativeSurface(frame.contentWindow);
+  } catch { return null; }
+}
+
+/**
+ * Bounded next-step handoff when the Mobile builder fails the evidence gate.
+ * This enumerates only script elements already present in the accessible
+ * document; it does not fetch them or return page queries/inline bootstrap.
+ */
+export function exportDgFrameMobilePublicSources(frame: DgFrame | null): DgMobilePublicSourceManifest {
+  if (!frame) return { version: 1, status: 'unavailable', scripts: [] };
+  try {
+    const doc = frame.contentDocument;
+    if (!doc || doc.location.origin !== window.location.origin) return { version: 1, status: 'unavailable', scripts: [] };
+    return exportDgMobileLoadedPublicScripts(doc);
+  } catch { return { version: 1, status: 'unavailable', scripts: [] }; }
 }
 
 export function stopDgFramePanel(frame: DgFrame | null): void {

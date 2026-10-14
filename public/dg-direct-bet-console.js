@@ -31,6 +31,15 @@ SOFTWARE.
     if (!Number.isSafeInteger(amount)) throw new Error("\u99AC\u4E01\u91D1\u984D\u8D85\u51FA\u6574\u6578\u7BC4\u570D");
     return amount;
   }
+  function doublingAmount(base, level) {
+    if (!Number.isSafeInteger(base) || base <= 0 || !Number.isInteger(level) || level < 0 || level > 30) throw Error("\u57FA\u672C\u91D1\u984D\uFF0F\u968E\u7D1A\u7121\u6548");
+    const amount = base * 2 ** level;
+    if (!Number.isSafeInteger(amount)) throw Error("\u500D\u6295\u91D1\u984D\u8D85\u51FA\u6574\u6578\u7BC4\u570D");
+    return amount;
+  }
+  function stakingAmount(base, level, staking) {
+    return staking === "doubling" ? doublingAmount(base, level) : martingaleAmount(base, staking === "flat" ? 0 : level);
+  }
   var DgBetLedger = class {
     state;
     constructor(saved) {
@@ -54,7 +63,7 @@ SOFTWARE.
       if (!tableId || !gameNo || this.state.bets.some((b) => b.key === key)) throw new Error("\u5C40\u865F\u7F3A\u5931\u6216\u672C\u5C40\u5DF2\u64CD\u4F5C");
       if (this.pending().some((b) => scope === "global" || b.scope === "global" || b.tableId === tableId)) throw new Error("\u4E0A\u4E00\u7B14\u4ECD\u5F85\u7D50\u7B97");
       const level = this.level(tableId, scope);
-      const amount = martingaleAmount(base, staking === "flat" ? 0 : level);
+      const amount = stakingAmount(base, level, staking);
       const bet = { key, tableId, gameNo, side, amount, level, scope, staking, state: "reserved", createdAt: Date.now() };
       this.state.bets.push(bet);
       return bet;
@@ -1097,6 +1106,79 @@ button:disabled { filter: saturate(.45); cursor: not-allowed; }
 .risk-actions button{height:36px;font-size:11px;}
 `;
 
+  // lib/official-turnover-panel.ts
+  var OFFICIAL_TURNOVER_HTML = `<section class="official-turnover" aria-label="\u5E73\u53F0\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u6D41\u6C34">
+  <div class="turnover-values"><div><small>\u4ECA\u65E5\u6D41\u6C34</small><strong id="official-today">\u5F85\u540C\u6B65</strong></div><div><small>\u8FD17\u65E5\u6D41\u6C34</small><strong id="official-week">\u5F85\u540C\u6B65</strong></div></div>
+  <span class="turnover-source" id="official-source">\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u984D \xB7 \u975E\u672C\u5DE5\u5177\u6CE8\u984D\u4F30\u7B97</span>
+</section>`;
+  var OFFICIAL_TURNOVER_REPORT_HTML = `<div class="report-official-turnover"><small>\u5E73\u53F0\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u6D41\u6C34</small><div><span>\u4ECA\u65E5 <strong id="report-official-today">\u5F85\u540C\u6B65</strong></span><span>\u8FD17\u65E5 <strong id="report-official-week">\u5F85\u540C\u6B65</strong></span></div><p id="report-official-source">\u8207\u4E0B\u65B9\u672C\u5DE5\u5177\u4E0B\u6CE8\u7D00\u9304\u5206\u958B\u7D71\u8A08</p></div>`;
+  var OFFICIAL_TURNOVER_CSS = `
+.official-turnover{flex:none;border:1px solid #637f8c38;border-radius:8px;background:#172b34;padding:7px 9px;margin:0;min-width:0;}
+.turnover-values{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;}
+.turnover-values small{display:block;font-size:9px;color:#aac1cb;margin-bottom:3px;}
+.turnover-values strong{display:block;font-size:13px;line-height:17px;color:#d6ece4;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.turnover-values>div+div{border-left:1px solid #607f8738;padding-left:12px;}
+.turnover-source{display:block;font-size:8px;line-height:12px;color:#98adb8;margin-top:4px;}
+#panel.compact:not(.mini) .official-turnover{padding:6px 8px;}
+#panel.compact:not(.mini) .chart-wrap{height:66px;}
+#panel.compact:not(.mini) .chart{height:25px;margin:3px 0;}
+#panel.compact:not(.mini) #table-strip{height:34px;min-height:34px;}
+#panel.compact:not(.mini) .table-chip{padding:3px 6px;}
+#panel.compact:not(.mini) #overview-page{overflow-y:auto!important;overscroll-behavior:contain;}
+#panel.compact:not(.mini) .official-turnover{padding:4px 8px;}
+#panel.compact:not(.mini) .turnover-values small{font-size:8px;line-height:9px;margin-bottom:2px;}
+#panel.compact:not(.mini) .turnover-values strong{font-size:12px;line-height:15px;}
+#panel.compact:not(.mini) .turnover-source{font-size:8px;line-height:9px;margin-top:2px;}
+#panel.compact:not(.mini) .chart-summary{padding:5px 8px!important;}
+#panel.compact:not(.mini) .chart{height:18px!important;margin:2px 0!important;}
+#panel.compact:not(.mini) .hero{height:131px;min-height:131px;}
+#panel.compact.mini .official-turnover{padding:3px 5px;border-radius:5px;background:transparent;border-color:#70899630;}
+#panel.compact.mini .turnover-values{gap:6px;}
+#panel.compact.mini .turnover-values>div+div{padding-left:6px;}
+#panel.compact.mini .turnover-values small{font-size:8px;display:inline;margin-right:4px;}
+#panel.compact.mini .turnover-values strong{display:inline;font-size:10px;line-height:14px;}
+#panel.compact.mini .turnover-source{display:none;}
+#panel.compact.mini .hero{height:92px;}
+#panel.compact.mini .statusline{max-height:14px;min-height:14px;font-size:9px;line-height:14px;}
+#panel.compact.mini #overview-page{gap:3px;}
+#panel.compact.mini .mini-context{height:13px;min-height:13px;font-size:9px;}
+#panel.compact.mini .hero{height:67px;min-height:67px;max-height:67px;}
+#panel.compact.mini .stats{height:25px;min-height:25px;padding:3px 5px;}
+#panel.compact.mini .stats small{font-size:7px;line-height:8px;margin-bottom:1px;}
+#panel.compact.mini .stats strong{font-size:10px;line-height:11px;}
+#panel.compact.mini .official-turnover{padding:2px 5px;min-height:25px;}
+#panel.compact.mini .turnover-values small{display:block;font-size:7px;line-height:8px;margin:0;}
+#panel.compact.mini .turnover-values strong{display:block;font-size:10px;line-height:11px;}
+.report-official-turnover{flex:none;background:#172b34;border:1px solid #637f8c38;border-radius:8px;padding:8px 10px;margin:6px 0;}
+.report-official-turnover>small{font-size:10px;color:#adc4cd;}
+.report-official-turnover>div{display:flex;gap:14px;margin-top:5px;flex-wrap:wrap;font-size:10px;}
+.report-official-turnover strong{font-size:12px;color:#d6ece4;font-variant-numeric:tabular-nums;}
+.report-official-turnover p{font-size:9px;line-height:14px;color:#9eb7c3;margin:5px 0 0;}
+`;
+  function renderOfficialTurnover(shadow, view) {
+    const q = (id) => shadow.getElementById(id);
+    for (const period of ["today", "week"]) {
+      const item = view?.[period];
+      const known = item?.value !== null && item?.value !== void 0 && Number.isFinite(item.value);
+      const text = known ? item.value.toLocaleString("zh-TW", { maximumFractionDigits: 2 }) : "\u5F85\u540C\u6B65";
+      const title = item ? `${item.scope}\uFF5C${item.range}\uFF5C${item.status}${item.updatedAt ? `\uFF5C\u66F4\u65B0 ${new Date(item.updatedAt).toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour12: false })}` : ""}` : "\u5F85\u540C\u6B65\u5B98\u65B9\u5831\u8868\uFF0C\u4E0D\u4EE5\u672C\u5DE5\u5177\u672C\u91D1\u63A8\u7B97";
+      for (const id of [`official-${period}`, `report-official-${period}`]) {
+        const element = q(id);
+        if (element) {
+          element.textContent = text;
+          element.title = title;
+        }
+      }
+    }
+    const source = q("official-source");
+    const note = q("report-official-source");
+    if (source) {
+      source.textContent = "\u5B98\u65B9\u6709\u6548\u4E0B\u6CE8\u984D \xB7 \u975E\u672C\u5DE5\u5177\u6CE8\u984D\u4F30\u7B97";
+      source.title = view ? `${view.today.scope}\uFF1B${view.today.status}\uFF1B${view.week.status}` : "\u7B49\u5F85\u5B98\u65B9\u4F86\u6E90";
+    }
+    if (note) note.textContent = `${view?.today.scope ?? "\u5B98\u65B9\u5831\u8868"}\uFF1B\u8FD17\u65E5\u4F9D\u5E73\u53F0\u671F\u9593\uFF0C\u8207\u672C\u5DE5\u5177\u4E0B\u6CE8\u7D00\u9304\u5206\u958B\u7D71\u8A08\u3002`;
+  }
+
   // lib/dg-panel-view.ts
   var DG_PANEL_HTML = `<style>
 :host{--fit:1;position:fixed;right:24px;top:24px;z-index:2147483647;color:#f4f3f5;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;color-scheme:dark}*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fb68f;outline-offset:2px}button{border:0;background:none;color:inherit}[hidden]{display:none!important}#panel{width:290px;border-radius:22px;background:linear-gradient(155deg,#171619,#19171b 68%,#19191c);padding:13px 13px 16px;box-shadow:0 8px 28px #0005;transform:scale(var(--fit));transform-origin:top right;border:1px solid #ffffff08}#head{touch-action:none;cursor:grab;user-select:none}#head:active{cursor:grabbing}.topline{display:flex;justify-content:space-between;align-items:center;font-size:9px;color:#989899;height:20px}.brand{display:flex;align-items:center;gap:5px}.dot{width:5px;height:5px;background:#6ca578;border-radius:50%;box-shadow:0 0 7px #72b78066}.tools{display:flex;gap:2px}.tools button{font-size:14px;width:25px;height:24px;background:#252327;border-radius:50%;color:#9d9296}.tools #hide{color:#b36157}.headline{display:flex;align-items:center;justify-content:space-between;margin:10px 0 14px}.title{font-size:21px;font-weight:760;letter-spacing:-.8px;margin:0}.balance{text-align:right}.balance small{display:block;color:#8a858d;font-size:8px;margin-bottom:3px}.balance strong{font-size:12px;font-variant-numeric:tabular-nums}.hero{padding:12px 12px 9px;background:radial-gradient(ellipse at 80% 8%,#28312a77,transparent 60%),linear-gradient(135deg,#262529,#242225);border-radius:15px}.hero-head{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:11px}.pill{font-size:9px;background:#294e3540;color:#6dac7c;padding:4px 6px;border-radius:15px;white-space:nowrap}.pill.idle{background:#414047;color:#a9a5ae}.method{font-size:8px;color:#aba5ae;text-align:right}.roomline{font-weight:650;font-size:10px;display:flex;gap:7px;align-items:center}.subtle{font-size:8px;color:#8b858e;font-weight:400}.bet-main{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:6px 0 4px}.bet-value{display:flex;align-items:center;gap:7px}.amount{font-size:31px;font-weight:800;line-height:1.2;letter-spacing:-1px;font-variant-numeric:tabular-nums}.side{color:#ee6e56;background:#783d3244;border-radius:7px;font-size:9px;padding:4px 5px;white-space:nowrap}.side.player{color:#84a5e9;background:#354d8244}.ring{--progress:0deg;width:49px;height:49px;flex:none;border-radius:50%;background:conic-gradient(#73997a var(--progress),#52565344 0);padding:2px;display:grid;place-items:center}.ring-inner{width:100%;height:100%;border-radius:50%;background:#292a29;display:grid;place-items:center;color:#afbab1;font-size:12px}.meta{color:#9d929f;font-size:8px;line-height:1.6;min-height:12px}.steps{display:flex;gap:4px;margin-top:12px}.step{flex:1;height:3px;background:#514a52}.step.active{background:#629d6e;box-shadow:0 0 5px #6c996633}.step-labels{display:flex;justify-content:space-between;color:#87828b;font-size:8px;margin:5px 0 16px}.step-labels b{color:#e1dddF;font-weight:600}.metrics{display:flex;justify-content:space-between;gap:5px}.metrics>div{flex:1}.metrics>div:nth-child(2){text-align:center}.metrics>div:last-child{text-align:right}.metrics small{font-size:8px;color:#a9a0aa;display:block;margin-bottom:4px}.metrics strong{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}.meter{height:2px;background:#655a6244;margin:12px 0 11px;position:relative}.meter:after{content:"";position:absolute;left:50%;top:-2px;width:6px;height:6px;border-radius:50%;background:#a6a0a5}.main-action{width:100%;height:32px;border-radius:8px;font-weight:650;font-size:10px;background:#365140;color:#b7d3bd}.main-action.live{background:#5c302c;color:#d46b55}.action-mark{font-size:8px;margin-right:5px}.statusline{font-size:8px;line-height:1.5;color:#9e919f;margin-top:12px;min-height:14px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.section-head{display:flex;align-items:center;justify-content:space-between;margin:19px 0 8px;font-size:11px;font-weight:700}.gold{color:#bfa568;font-size:8px;font-weight:400}.stats{background:#242226;border-radius:11px;padding:12px;display:flex;justify-content:space-between;gap:5px}.stats>div{flex:1}.stats small{font-size:8px;color:#8f8794;display:block;margin-bottom:5px}.stats strong{font-size:12px;font-variant-numeric:tabular-nums}.green{color:#70b486!important}.red{color:#db7569!important}#tables{max-height:126px;overflow:auto;scrollbar-width:none}.table-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #ffffff07}.table-row:last-child{border-bottom:0}.table-badge{width:27px;height:27px;flex:none;border-radius:50%;background:#333138;color:#9fb29f;display:grid;place-items:center;font-size:9px}.table-info{flex:1;min-width:0}.table-info strong{font-size:9px}.table-info small{font-size:8px;color:#8b8391;display:block;margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.table-rec{text-align:right;white-space:nowrap;font-size:9px}.table-rec small{display:block;margin-top:3px;color:#8d8592;font-size:8px}.empty{padding:13px 0;color:#8b8490;font-size:9px}.footer{margin-top:10px;text-align:center;font-size:8px;color:#6f6876}.page-title{font-size:18px;margin:14px 0 5px}.page-caption{font-size:9px;color:#a49aa8;line-height:1.6;margin-bottom:13px}.form-body{max-height:460px;overflow:auto;scrollbar-width:thin;padding-right:2px}.form-body label{display:block;font-size:10px;color:#beb4c3;margin:12px 0 6px}.form-body select,.form-body input:not([type=checkbox]){width:100%;height:32px;background:#2b272e;border:1px solid #48404d;color:#e4dbe9;border-radius:7px;padding:6px 8px}.form-row{display:flex;gap:9px}.form-row>div{flex:1;min-width:0}.form-body .secondary{height:29px;border:1px solid #514657;border-radius:7px;font-size:10px;width:100%;color:#c3b7ce;background:#29232f}.scan-row{display:flex;gap:7px;align-items:center;margin:10px 0}.scan-row select{flex:1}.scan-row button{width:92px!important}#rooms{display:flex;flex-wrap:wrap;gap:5px}.room{border:1px solid #4f4459;border-radius:5px;font-size:9px;padding:5px 7px;background:#29232f}.room.active{border-color:#aa925c;background:#453b27;color:#e8daba}.ack{display:flex!important;align-items:flex-start;gap:5px;font-size:9px!important;line-height:1.6;margin:13px 0!important}.ack input{flex:none;margin:2px 0 0}.setting-actions{display:flex;gap:7px;margin-top:12px}.setting-actions button{flex:1;border-radius:7px;background:#35463a;height:31px;font-size:10px}.setting-actions #stop{background:#54312d;color:#db8277}.fineprint{font-size:8px;color:#8a7e94;line-height:1.6;margin-top:12px}.log-status{font-size:10px;color:#bcb29f;line-height:1.6;background:#252027;border-radius:9px;padding:10px;margin:12px 0}#events{white-space:pre-wrap;font-size:9px;color:#b0a5ba;line-height:1.8;max-height:430px;overflow:auto;overflow-wrap:anywhere;scrollbar-width:thin}#orb{width:43px;height:43px;border-radius:50%;display:grid;place-items:center;background:#f7f7f6;color:#999;box-shadow:0 0 0 4px #ffffff30,0 0 0 9px #ffffff17;font-size:10px;font-weight:700}#orb[hidden]{display:none}.titlebar{display:flex;align-items:center;gap:10px}.drag-mark{font-size:18px;color:#c1b8c5}.metrics .meter-value{font-size:10px}.range-view{width:100%;height:12px;accent-color:#70a87c;margin:6px 0 9px;cursor:default;pointer-events:none}.chart{width:100%;height:43px;display:block;margin-top:8px}.chart polyline{fill:none;stroke:#70b486;stroke-width:1.7;stroke-linejoin:round}.chart.red polyline{stroke:#da7569}.search-box{display:flex;justify-content:space-between;align-items:center;min-height:100px}.search-box strong{font-size:20px;letter-spacing:-.5px}.search-icon{width:48px;height:48px;border:2px solid #787d78;border-radius:50%;display:grid;place-items:center;color:#b4b7b4;font-size:22px}.search-note{font-size:8px;color:#928a98;line-height:1.7}.compact-actions{display:none;gap:8px;margin-top:10px}.compact-actions button{flex:1;background:#2c2930;border-radius:9px;height:33px;font-size:10px}.compact-actions #compact-stop{background:#512c29;color:#d77560}#panel.compact{width:276px;border-radius:15px;padding:10px 12px;background:#151518}.compact .headline,.compact .hero-head,.compact .main-action,.compact .section-head,.compact #tables,.compact .footer{display:none}.compact .hero{background:none;padding:7px 0 0;border-radius:0}.compact .bet-main{flex-direction:row-reverse;justify-content:flex-end;gap:12px}.compact .ring{width:44px;height:44px}.compact .bet-value{flex:1}.compact .amount{font-size:29px}.compact .steps{margin-top:10px}.compact .step-labels{margin-bottom:12px}.compact .meter{margin-top:9px}.compact .metrics{margin-top:11px}.compact .stats{border-radius:7px;margin-top:8px;padding:9px}.compact .stats small{font-size:7px}.compact .stats strong{font-size:11px}.compact .compact-actions{display:flex}.compact .chart{height:27px}.compact #hero-status{margin-top:6px}.compact .topline{height:24px}.compact .brand{color:#eee;font-weight:700;font-size:10px}.cards-result{margin:8px 0;padding:8px 5px;background:#17191b;border-radius:8px;display:flex;gap:8px}.cards-side{flex:1;min-width:0}.cards-side>small{font-size:8px;color:#96b1dc}.cards-side:last-child>small{color:#df8c84}.cards-side>strong{float:right;font-size:11px}.cards-line{display:flex;gap:4px;margin-top:6px}.playing-card{width:26px;height:36px;background:#e9e6e9;border-radius:3px;color:#222;font-size:10px;display:grid;place-items:center;background-position:center;background-size:contain;background-repeat:no-repeat}.cards-hint{font-size:7px;color:#8f8795;margin-top:4px}.report-shell{position:fixed;inset:6vh 5vw;z-index:2147483647;background:#141211;border:1px solid #645133;border-radius:11px;box-shadow:0 8px 40px #000b;color:#e6dcc8;display:flex;flex-direction:column;padding:18px;font-size:12px}.report-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #594626;padding-bottom:12px}.report-head h2{font-size:18px;margin:0}.report-head button{background:#403320;border-radius:5px;padding:7px 14px}.report-filter{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:15px 0}.report-filter label{font-size:11px}.report-filter select,.report-filter button{background:#292419;border:1px solid #594b31;border-radius:4px;padding:6px;color:#ddd2b7}.report-filter button.selected,.report-tabs button.selected{color:#e6bd67;border-color:#c89d42}.report-tabs{display:flex;gap:18px;border-bottom:1px solid #5d472c;margin-bottom:9px}.report-tabs button{padding:8px 0;font-size:12px;border-bottom:2px solid transparent;color:#9d9079}.report-note{font-size:10px;color:#9d9485;line-height:1.7;margin:5px 0 10px}.report-scroll{overflow:auto;flex:1;min-height:0}.report-grid{border-collapse:collapse;min-width:1040px;width:100%;font-size:11px}.report-grid th{background:#292013;color:#d9c89f;font-weight:500;white-space:nowrap;padding:10px 12px;text-align:left}.report-grid td{padding:10px 12px;border-bottom:1px solid #332a1d;white-space:nowrap}.report-footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:12px;color:#ae9a70}.report-footer button{padding:5px 10px;border:1px solid #655232;border-radius:5px}.report-empty{padding:40px;text-align:center;color:#ad9c86}.settings-added{font-size:9px;color:#a296a9;line-height:1.6;margin:8px 0}#settings-not-in-video{color:#b89c69}.back-report{font-size:10px}.compact #settings-page,.compact #logs-page{font-size:11px}#orb svg{width:20px;height:20px}#status{color:#a9a0b0}#stop-now{width:100%}@media(max-width:500px) and (orientation:portrait){:host{right:12px;top:20px}}
@@ -1108,20 +1190,22 @@ ${DG_PRO_CSS}
 ${DG_SPACIOUS_CSS}
 ${DG_SURFACES_CSS}
 ${DG_SMALL_CSS}
+${OFFICIAL_TURNOVER_CSS}
+.doubling-reminder{border-left:3px solid #cba86a;border-radius:5px;padding:8px 9px;background:#a4793324;color:#e6c995;font-size:10px;line-height:1.6;margin:8px 0;}
 </style>
 
 <section id="panel">
 <header id="head"><div class="topline"><span class="brand"><i class="dot"></i><span id="brand-count">\u767E\u5BB6\u5DE5\u7A0B\u5E2B</span></span><div class="tools"><button id="nav-mode" aria-label="\u5207\u63DB\u7E3D\u89BD\u8207\u5C0F\u7A97" title="\u5207\u63DB\u7E3D\u89BD\uFF0F\u767E\u5BB6\u5DE5\u7A0B\u5E2B"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/></svg></button><button id="nav-overview" aria-label="\u7E3D\u89BD" title="\u7E3D\u89BD"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3z M9 20v-7h6v7"/></svg><span>\u7E3D\u89BD</span></button><button id="nav-settings" aria-label="\u8A2D\u5B9A" title="\u8A2D\u5B9A"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2 3 3-1 2 3-2 3 2 3-2 3-3-1-2 3-2-3-3 1-2-3 2-3-2-3 2-3 3 1z"/><circle cx="12" cy="11" r="3"/></svg><span>\u8A2D\u5B9A</span></button><button id="nav-logs" aria-label="\u7D00\u9304" title="\u7D00\u9304"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14 M5 12h14 M5 18h14"/></svg><span>\u7D00\u9304</span></button><button id="zoom-out" aria-label="\u5207\u63DB\u8FF7\u4F60\u9762\u677F" title="\u5207\u63DB\u8FF7\u4F60\u9762\u677F"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg><span id="mini-label">\u8FF7\u4F60</span></button><button id="zoom-in" aria-label="\u653E\u5927\u9762\u677F" title="\u653E\u5927"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14 M12 5v14"/></svg></button><button id="hide" aria-label="\u6536\u5408" title="\u6536\u5408"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div></div></header>
 <div id="overview-page"><div class="headline"><div class="titlebar"><h1 class="title">\u7E3D\u89BD</h1><span class="drag-mark">\u2725</span></div><div class="balance"><small>\u5E73\u53F0\u9918\u984D</small><strong id="balance">\u2014</strong></div></div>
 <div class="parallel-control"><label for="parallel-count">\u540C\u6642\u4E0B\u6CE8</label><select id="parallel-count" aria-label="\u540C\u6642\u4E0B\u6CE8\u684C\u6578"><option value="1" selected>1 \u684C</option><option value="3">3 \u684C</option><option value="5">5 \u684C</option><option value="all">\u6240\u6709\u5DF2\u8F09\u5165\u684C</option></select><button id="choose-tables" class="choose-tables">\u9078\u684C</button></div><div id="parallel-summary" class="parallel-summary">\u9010\u684C\u7368\u7ACB \xB7 \u4E0D\u7B49\u5176\u4ED6\u684C\u7D50\u7B97</div><div class="mini-context"><span id="mini-running">\u5DF2\u505C\u6B62</span><span>\u9918\u984D <strong id="mini-balance">\u2014</strong></span></div><div class="hero"><div class="hero-head"><span id="run-pill" class="pill idle">\u25CF \u5DF2\u505C\u6B62</span><span id="method" class="method">\u7B56\u7565 \xB7 \u99AC\u4E01</span></div><div id="search-box" class="search-box" hidden><div><strong id="search-title">\u6311\u9078\u4E0B\u6CE8\u684C\u2026</strong><div class="search-note">\u7B49\u5F85\u9078\u5B9A\u684C\u53F0\u958B\u653E\u4E0B\u6CE8</div></div><span class="search-icon">\u2315</span></div><div id="target-box"><div class="strategy-preview"><span>\u7B56\u7565</span><span class="strategy-badge"><i id="main-strategy-logo" class="provider-logo" aria-hidden="true"></i><strong id="current-strategy">AI\u7D9C\u5408</strong></span></div><div class="roomline"><span id="focus-table">\u7B49\u5F85\u684C\u53F0</span><span id="focus-phase" class="subtle">\u6E96\u5099\u4E2D</span></div><div class="amount-explainer"><span id="amount-label">\u4E0B\u4E00\u6CE8\u9810\u89BD</span><span id="amount-rule">\u57FA\u672C 100 \xB7 \u7B2C1\u968E \xD71</span></div><div class="bet-main"><div class="bet-value"><strong id="amount" class="amount">100</strong><span id="side" class="side">\u2014</span></div><div id="ring" class="ring"><span id="countdown" class="ring-inner">\u2014</span></div></div><div id="focus-meta" class="meta">\u7B49\u5019\u771F\u5BE6\u724C\u8DEF\u8207\u5012\u6578</div><div class="steps"><i id="step-1" class="step"></i><i id="step-2" class="step"></i><i id="step-3" class="step"></i><i id="step-4" class="step"></i></div><div class="step-labels"><span>\u8B80\u53D6</span><span>\u7B49\u5F85\u63A5\u53D7</span><b>\u7D50\u7B97</b><span>\u7E8C\u6CE8</span></div></div><div id="cards-result" class="cards-result" hidden><div class="cards-side"><small>\u9592 PLAYER</small><strong id="player-point">\u2014</strong><div id="player-cards" class="cards-line"></div></div><div class="cards-side"><small>\u838A BANKER</small><strong id="banker-point">\u2014</strong><div id="banker-cards" class="cards-line"></div></div></div><div class="metrics"><div><small>\u7D2F\u8A08\u6700\u4F4E</small><strong id="range-low" class="meter-value">\u2014</strong></div><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="hero-pnl">0</strong></div><div><small>\u7D2F\u8A08\u6700\u9AD8</small><strong id="range-high" class="meter-value">\u2014</strong></div></div><input id="pnl-range" class="range-view" type="range" min="0" max="100" value="50" tabindex="-1" aria-label="\u672C\u8F2A\u7D50\u7B97\u5728\u986F\u793A\u7BC4\u570D\u5167\u7684\u4F4D\u7F6E" aria-readonly="true"><button id="stop-now" class="main-action"><span class="action-mark">\u25B6</span>\u958B\u59CB\u81EA\u52D5\u4E0B\u6CE8</button><div id="hero-status" class="statusline" role="button" tabindex="0" aria-label="\u67E5\u770B\u5B8C\u6574\u72C0\u614B">\u5C1A\u672A\u9001\u51FA\u4E0B\u6CE8</div></div>
-<div class="section-head"><span>\u672C\u8F2A</span><button id="open-records" class="gold">\u8A18\u9304</button></div><div class="stats"><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="round-pnl">0</strong></div><div><small>\u8D0F\uFF0F\u8F38\uFF0F\u548C</small><strong id="round-wlt">0/0/0</strong></div><div><small>\u5BE6\u969B\u547D\u4E2D\u7387</small><strong id="hit-rate">\u2014</strong></div></div><div id="chart-wrap" class="chart-wrap"><div class="chart-head"><span>\u7D2F\u8A08\u640D\u76CA\u8D70\u52E2</span><strong id="chart-last">\u2014</strong></div><svg id="pnl-chart" class="chart" viewBox="0 0 250 43" preserveAspectRatio="none" aria-label="\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u66F2\u7DDA"><path class="chart-grid" d="M0 4H250 M0 14H250 M0 25H250 M0 39H250 M0 4V39 M62 4V39 M125 4V39 M188 4V39 M250 4V39"/><line id="chart-zero" class="chart-zero" x1="0" x2="250" y1="22" y2="22"/><polygon id="chart-area" class="chart-area" points=""/><polyline id="pnl-line" points="0,22 250,22"/><circle id="chart-dot" class="chart-dot" cx="250" cy="22" r="1.6"/></svg><div id="chart-empty" class="chart-empty">\u7B49\u5F85\u9996\u7B46\u7D50\u7B97</div><div class="chart-foot"><span id="chart-low">\u6700\u4F4E \u2014</span><span id="chart-count">0 \u6CE8</span><span id="chart-high">\u6700\u9AD8 \u2014</span></div></div><div class="section-head"><span>\u5DF2\u9078\u684C\u53F0</span><button id="edit-rooms" class="gold">\u5168\u90E8</button></div><div id="tables"></div><div id="table-strip" aria-label="\u5DF2\u9078\u684C\u53F0"></div><div class="footer">\u63A8\u85A6\u50C5\u4F9B\u53C3\u8003</div></div>
+<div class="section-head"><span>\u672C\u8F2A</span><button id="open-records" class="gold">\u8A18\u9304</button></div><div class="stats"><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="round-pnl">0</strong></div><div><small>\u8D0F\uFF0F\u8F38\uFF0F\u548C</small><strong id="round-wlt">0/0/0</strong></div><div><small>\u5BE6\u969B\u547D\u4E2D\u7387</small><strong id="hit-rate">\u2014</strong></div></div>${OFFICIAL_TURNOVER_HTML}<div id="chart-wrap" class="chart-wrap"><div class="chart-head"><span>\u7D2F\u8A08\u640D\u76CA\u8D70\u52E2</span><strong id="chart-last">\u2014</strong></div><svg id="pnl-chart" class="chart" viewBox="0 0 250 43" preserveAspectRatio="none" aria-label="\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u66F2\u7DDA"><path class="chart-grid" d="M0 4H250 M0 14H250 M0 25H250 M0 39H250 M0 4V39 M62 4V39 M125 4V39 M188 4V39 M250 4V39"/><line id="chart-zero" class="chart-zero" x1="0" x2="250" y1="22" y2="22"/><polygon id="chart-area" class="chart-area" points=""/><polyline id="pnl-line" points="0,22 250,22"/><circle id="chart-dot" class="chart-dot" cx="250" cy="22" r="1.6"/></svg><div id="chart-empty" class="chart-empty">\u7B49\u5F85\u9996\u7B46\u7D50\u7B97</div><div class="chart-foot"><span id="chart-low">\u6700\u4F4E \u2014</span><span id="chart-count">0 \u6CE8</span><span id="chart-high">\u6700\u9AD8 \u2014</span></div></div><div class="section-head"><span>\u5DF2\u9078\u684C\u53F0</span><button id="edit-rooms" class="gold">\u5168\u90E8</button></div><div id="tables"></div><div id="table-strip" aria-label="\u5DF2\u9078\u684C\u53F0"></div><div class="footer">\u63A8\u85A6\u50C5\u4F9B\u53C3\u8003</div></div>
 <div id="settings-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u57F7\u884C\u53C3\u6578</div><h2 class="page-title">\u7B56\u7565\u8A2D\u5B9A</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg></span></div><p class="surface-note">\u8A2D\u5B9A\u65B9\u5411\u4F86\u6E90\u3001\u55AE\u6CE8\u91D1\u984D\u8207\u505C\u6B62\u689D\u4EF6\u3002</p><div class="form-body">
-<section class="form-section"><h3 class="form-section-head"><i>01</i>\u63A8\u85A6\u8207\u914D\u6CE8</h3><label for="single-staking">\u914D\u6CE8\u65B9\u5F0F</label><select id="single-staking"><option value="flat">\u5E73\u6CE8 \xB7 \u6BCF\u7B46\u56FA\u5B9A\u91D1\u984D</option><option value="martingale" selected>\u99AC\u4E01 \xB7 \u8DE8\u623F\u63A5\u7E8C\uFF0C\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E</option></select><label for="start-mode">\u958B\u59CB\u65B9\u5F0F</label><select id="start-mode"><option value="fresh" selected>\u65B0\u958B\u59CB \xB7 \u9996\u7B46\u57FA\u672C\u55AE\u6CE8</option><option value="resume">\u7E8C\u63A5 \xB7 \u6CBF\u7528\u914D\u6CE8\u968E\u7D1A</option></select><div id="staking-hint" class="settings-added"></div><label id="provider-label" for="provider-trigger">\u63A8\u85A6\u4F86\u6E90</label><div class="provider-picker"><select id="provider" hidden></select><button id="provider-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="provider-menu" aria-labelledby="provider-label provider-selected-name"><span id="provider-selected-logo" class="provider-logo" aria-hidden="true"></span><span id="provider-selected-name">AI\u7D9C\u5408</span><svg class="provider-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="provider-menu" role="listbox" aria-label="\u63A8\u85A6\u4F86\u6E90" hidden></div></div></section>
+<section class="form-section"><h3 class="form-section-head"><i>01</i>\u63A8\u85A6\u8207\u914D\u6CE8</h3><label for="single-staking">\u914D\u6CE8\u65B9\u5F0F</label><select id="single-staking"><option value="flat">\u5E73\u6CE8 \xB7 \u6BCF\u7B46\u56FA\u5B9A\u91D1\u984D</option><option value="martingale" selected>\u99AC\u4E01 \xB7 \u8DE8\u623F\u63A5\u7E8C\uFF0C\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E</option><option value="doubling">\u500D\u6295\u6CD5 \xB7 1\u21922\u21924\u21928\uFF0C\u8F38\u5F8C\u52A0\u500D\u3001\u8D0F\u91CD\u7F6E</option></select><label for="start-mode">\u958B\u59CB\u65B9\u5F0F</label><select id="start-mode"><option value="fresh" selected>\u65B0\u958B\u59CB \xB7 \u9996\u7B46\u57FA\u672C\u55AE\u6CE8</option><option value="resume">\u7E8C\u63A5 \xB7 \u6CBF\u7528\u914D\u6CE8\u968E\u7D1A</option></select><div id="staking-hint" class="settings-added"></div><p id="doubling-reminder" class="doubling-reminder" hidden>\u4F7F\u7528\u500D\u6295\u6CD5\uFF0C\u8ACB\u8A2D\u5B9A\u6B62\u76C8\u8207\u6B62\u640D\uFF1B\u9023\u7E8C\u8667\u640D\u6703\u4F7F\u4E0B\u4E00\u6CE8\u52A0\u500D\u3002</p><label id="provider-label" for="provider-trigger">\u63A8\u85A6\u4F86\u6E90</label><div class="provider-picker"><select id="provider" hidden></select><button id="provider-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="provider-menu" aria-labelledby="provider-label provider-selected-name"><span id="provider-selected-logo" class="provider-logo" aria-hidden="true"></span><span id="provider-selected-name">AI\u7D9C\u5408</span><svg class="provider-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="provider-menu" role="listbox" aria-label="\u63A8\u85A6\u4F86\u6E90" hidden></div></div></section>
 <section class="form-section"><h3 class="form-section-head"><i>02</i>\u6295\u6CE8\u91D1\u984D</h3><div class="form-row"><div><label for="base">\u57FA\u672C\u55AE\u6CE8</label><input id="base" type="number" min="1" value="100"></div><div><label for="cap">\u55AE\u7B46\u4E0A\u9650</label><input id="cap" type="number" min="1" value="100000"></div></div></section>
 <section class="form-section"><h3 class="form-section-head"><i>03</i>\u6B62\u640D\u8207\u6B62\u76C8</h3><div class="form-row"><div><label for="stop-loss">\u6B62\u640D\u91D1\u984D</label><input id="stop-loss" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div><div><label for="take-profit">\u6B62\u76C8\u91D1\u984D</label><input id="take-profit" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div></div><p class="field-note">\u9054\u5230\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u9580\u6ABB\u5F8C\uFF0C\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\u3002</p></section>
 <span id="zoom-label" hidden>100%</span><input id="zoom" type="range" min="70" max="180" step="10" value="100" hidden><input id="range-min" hidden value=""><input id="range-max" hidden value=""><select id="scope" hidden disabled><option value="table" selected>\u9010\u684C\u7368\u7ACB</option></select><select id="count" hidden><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="all">all</option></select><button id="scan" hidden></button><div hidden><button id="start"></button><button id="once"></button><button id="stop"></button></div></div></div>
 <div id="rooms-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u4E0B\u6CE8\u7BC4\u570D</div><h2 class="page-title">\u9078\u64C7\u684C\u53F0</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span></div><div class="selection-control"><span id="selection-mode">\u81EA\u52D5\u627E\u684C \xB7 \u958B\u653E\u4E0B\u6CE8\u5C31\u52A0\u5165</span><button id="auto-tables">\u81EA\u52D5\u627E\u684C\u4E2D</button></div><div id="rooms-hint" class="surface-note page-caption">\u5148\u53D6\u6D88\u4E00\u684C\uFF0C\u518D\u9078\u5176\u4ED6\u684C\u3002</div><div id="rooms"></div><button id="rooms-back" class="rooms-back">\u5B8C\u6210\u9078\u64C7\uFF0C\u56DE\u5230\u7E3D\u89BD</button></div><div id="logs-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u72C0\u614B\u8207\u7D50\u7B97</div><h2 class="page-title">\u57F7\u884C\u7D00\u9304</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 8h4M10 12h4M10 16h4"/></svg></span></div><p class="surface-note">\u4F9D\u5E8F\u67E5\u770B\u9001\u51FA\u3001\u63A5\u53D7\u53CA\u7D50\u7B97\u4E8B\u4EF6\u3002</p><div class="log-status"><span class="log-label">\u76EE\u524D\u72C0\u614B</span><div id="status"></div></div><div id="events" aria-label="\u64CD\u4F5C\u4E8B\u4EF6\u6642\u9593\u8EF8"></div></div>
-<div class="compact-actions"><button id="open-report">\u6253\u958B\u6230\u7E3E</button><button id="compact-stop">\u505C\u6B62</button></div><button id="resize-panel" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section><section id="risk-dialog" class="risk-overlay" role="dialog" aria-modal="true" aria-labelledby="risk-title" hidden><div class="risk-card"><div class="risk-emblem"><svg class="risk-triangle" viewBox="0 0 80 72" aria-hidden="true"><path d="M40 5 75 65H5Z"/><path class="risk-mark" d="M40 24v20"/><circle class="risk-point" cx="40" cy="54" r="3"/></svg></div><h2 id="risk-title">\u4F7F\u7528\u98A8\u96AA\u8072\u660E</h2><p class="risk-copy">\u81EA\u884C\u6C7A\u5B9A\u958B\u555F,\u6240\u6709\u98A8\u96AA\u81EA\u884C\u627F\u64D4,\u4E0D\u4FDD\u8B49\u7A69\u5B9A\u7372\u5229,\u7A0B\u5F0F\u4E0D\u8CA0\u76F8\u95DC\u8CAC\u4EFB</p><div id="risk-stake-summary" class="risk-stake-summary" hidden></div><label class="risk-ack"><input id="ack" type="checkbox"><span>\u6211\u5DF2\u95B1\u8B80\u4E26\u4E86\u89E3\u4E0A\u8FF0\u98A8\u96AA</span></label><div class="risk-actions"><button id="risk-cancel">\u53D6\u6D88</button><button id="risk-confirm" disabled>\u78BA\u8A8D\u958B\u59CB</button></div></div></section><section id="report-shell" class="report-shell" hidden><header class="report-head"><div><div class="surface-kicker">\u672C\u5DE5\u5177\u8A18\u9304</div><h2>\u4E0B\u6CE8\u6230\u7E3E</h2></div><button id="close-report">\u8FD4\u56DE\u7E3D\u89BD</button></header><div class="report-filter"><label>\u904A\u6232\u5927\u5EF3 <select id="report-lobby"><option value="all">\u5168\u90E8</option><option value="DG">DG</option></select></label><label>\u904A\u6232\u985E\u578B <select id="report-game"><option value="all">\u5168\u90E8</option><option value="baccarat">\u767E\u5BB6\u6A02</option></select></label><button id="report-today" class="selected">\u4ECA\u65E5</button><button id="report-yesterday">\u6628\u65E5</button><button id="report-week">\u4E03\u65E5</button></div><div class="report-tabs"><button id="report-bets" class="selected">\u6295\u6CE8\u8A18\u9304</button><button id="report-transactions" hidden>\u4EA4\u6613\u8A18\u9304</button></div><div id="report-note" class="report-note">\u672C\u5DE5\u5177\u8A18\u9304\u7684\u4E0B\u6CE8\u8207\u7D50\u679C</div><div class="report-scroll"><div id="report-body" class="report-cards"></div><div id="report-empty" class="report-empty" hidden>\u5C1A\u7121\u8A18\u9304</div></div><footer class="report-footer"><span id="report-total">\u5408\u8A08 \u2014</span><span><button id="report-prev">\u4E0A\u4E00\u9801</button> <span id="report-page">1 / 1</span> <button id="report-next">\u4E0B\u4E00\u9801</button></span></footer><button id="resize-report" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section>`;
+<div class="compact-actions"><button id="open-report">\u6253\u958B\u6230\u7E3E</button><button id="compact-stop">\u505C\u6B62</button></div><button id="resize-panel" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section><section id="risk-dialog" class="risk-overlay" role="dialog" aria-modal="true" aria-labelledby="risk-title" hidden><div class="risk-card"><div class="risk-emblem"><svg class="risk-triangle" viewBox="0 0 80 72" aria-hidden="true"><path d="M40 5 75 65H5Z"/><path class="risk-mark" d="M40 24v20"/><circle class="risk-point" cx="40" cy="54" r="3"/></svg></div><h2 id="risk-title">\u4F7F\u7528\u98A8\u96AA\u8072\u660E</h2><p class="risk-copy">\u81EA\u884C\u6C7A\u5B9A\u958B\u555F,\u6240\u6709\u98A8\u96AA\u81EA\u884C\u627F\u64D4,\u4E0D\u4FDD\u8B49\u7A69\u5B9A\u7372\u5229,\u7A0B\u5F0F\u4E0D\u8CA0\u76F8\u95DC\u8CAC\u4EFB</p><div id="risk-stake-summary" class="risk-stake-summary" hidden></div><p id="risk-doubling-warning" class="doubling-reminder" hidden></p><label class="risk-ack"><input id="ack" type="checkbox"><span>\u6211\u5DF2\u95B1\u8B80\u4E26\u4E86\u89E3\u4E0A\u8FF0\u98A8\u96AA</span></label><div class="risk-actions"><button id="risk-cancel">\u53D6\u6D88</button><button id="risk-confirm" disabled>\u78BA\u8A8D\u958B\u59CB</button></div></div></section><section id="report-shell" class="report-shell" hidden><header class="report-head"><div><div class="surface-kicker">\u672C\u5DE5\u5177\u8A18\u9304</div><h2>\u4E0B\u6CE8\u6230\u7E3E</h2></div><button id="close-report">\u8FD4\u56DE\u7E3D\u89BD</button></header><div class="report-filter"><label>\u904A\u6232\u5927\u5EF3 <select id="report-lobby"><option value="all">\u5168\u90E8</option><option value="DG">DG</option></select></label><label>\u904A\u6232\u985E\u578B <select id="report-game"><option value="all">\u5168\u90E8</option><option value="baccarat">\u767E\u5BB6\u6A02</option></select></label><button id="report-today" class="selected">\u4ECA\u65E5</button><button id="report-yesterday">\u6628\u65E5</button><button id="report-week">\u4E03\u65E5</button></div><div class="report-tabs"><button id="report-bets" class="selected">\u6295\u6CE8\u8A18\u9304</button><button id="report-transactions" hidden>\u4EA4\u6613\u8A18\u9304</button></div><div id="report-note" class="report-note">\u672C\u5DE5\u5177\u8A18\u9304\u7684\u4E0B\u6CE8\u8207\u7D50\u679C</div>${OFFICIAL_TURNOVER_REPORT_HTML}<div class="report-scroll"><div id="report-body" class="report-cards"></div><div id="report-empty" class="report-empty" hidden>\u5C1A\u7121\u8A18\u9304</div></div><footer class="report-footer"><span id="report-total">\u5408\u8A08 \u2014</span><span><button id="report-prev">\u4E0A\u4E00\u9801</button> <span id="report-page">1 / 1</span> <button id="report-next">\u4E0B\u4E00\u9801</button></span></footer><button id="resize-report" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section>`;
 
   // lib/dg-panel-data.ts
   function cumulativePoints(bets, width = 250, height = 43) {
@@ -1492,6 +1576,492 @@ ${DG_SMALL_CSS}
     } };
   }
 
+  // lib/dg-official-turnover.ts
+  var DG_OFFICIAL_REFRESH_MS = 6e4;
+  var DG_OFFICIAL_TIMEOUT_MS = 1e4;
+  var EMPTY_STATUS = "\u5F85\u540C\u6B65\u5B98\u65B9\u5831\u8868";
+  var SCOPE = "DG \u5B98\u65B9\u6709\u6548\u984D\uFF08dList[1]\uFF09";
+  var EVENT_RECEIVED_SUCCESS = "RECEIVED_SUCCESS";
+  function taipeiDay(now = Date.now()) {
+    return new Date(now + 8 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+  }
+  function rangeFor(period, day) {
+    return period === "today" ? `${day}\uFF08DG \u5B98\u65B9\u4ECA\u65E5\uFF0CtimeSpan=1\uFF09` : "DG \u5B98\u65B9\u8FD17\u65E5\uFF08timeSpan=7\uFF1B\u4EE5\u5E73\u53F0\u5B9A\u7FA9\u70BA\u6E96\uFF09";
+  }
+  function emptyValue(period, day, status = EMPTY_STATUS) {
+    return { value: null, status, updatedAt: null, range: rangeFor(period, day), scope: SCOPE };
+  }
+  function isObject(value) {
+    return !!value && typeof value === "object";
+  }
+  function numberOrNull(value) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    return value;
+  }
+  function zeroOrMissing(value) {
+    return value === void 0 || value === null || value === "" || value === 0 || value === "0";
+  }
+  function accountIdentity(account, objectIds, nextObjectId) {
+    if (account === null || account === void 0) return "none";
+    if (typeof account === "string" || typeof account === "number" || typeof account === "boolean") {
+      return `${typeof account}:${String(account)}`;
+    }
+    if (!isObject(account)) return typeof account;
+    for (const key of ["id", "accountId", "account", "username", "userName", "uid", "playerId", "memberId"]) {
+      const value = account[key];
+      if (typeof value === "string" || typeof value === "number") return `${key}:${String(value)}`;
+    }
+    const object = account;
+    let id = objectIds.get(object);
+    if (id === void 0) {
+      id = nextObjectId();
+      objectIds.set(object, id);
+    }
+    return `object:${id}`;
+  }
+  function candidatePlayerInfo(value) {
+    if (!isObject(value)) return null;
+    const direct = value;
+    if (direct.socketMan && typeof direct.socketMan.sendData === "function") return direct;
+    const playerInfo = value.playerInfo;
+    if (isObject(playerInfo)) {
+      const player = playerInfo;
+      if (player.socketMan && typeof player.socketMan.sendData === "function") return player;
+    }
+    return null;
+  }
+  function findRuntime(W) {
+    if (!isObject(W)) return null;
+    const laya = isObject(W.Laya) ? W.Laya : null;
+    const stage = laya && laya.stage;
+    const roots = [];
+    if (stage) roots.push(stage);
+    roots.push(W);
+    const seen = /* @__PURE__ */ new Set();
+    let inspected = 0;
+    while (roots.length && inspected++ < 2e3) {
+      const node = roots.shift();
+      if (!isObject(node)) continue;
+      if (seen.has(node)) continue;
+      seen.add(node);
+      const playerInfo = candidatePlayerInfo(node);
+      if (playerInfo?.socketMan && typeof playerInfo.socketMan.sendData === "function") {
+        return { playerInfo, socket: playerInfo.socketMan };
+      }
+      const count = numberOrNull(node.numChildren);
+      if (count !== null && count >= 0 && typeof node.getChildAt === "function") {
+        for (let i = 0; i < Math.min(count, 500); i++) {
+          try {
+            roots.push(node.getChildAt(i));
+          } catch {
+          }
+        }
+      }
+      const children = node._children;
+      if (Array.isArray(children)) roots.push(...children.slice(0, 500));
+    }
+    return null;
+  }
+  function readRequestBinding(bean, ownRequests) {
+    if (!isObject(bean) || Number(bean.cmd) !== 13) return null;
+    const list = Array.isArray(bean.list) ? bean.list : [];
+    const type = Number.isFinite(Number(bean.type)) ? Number(bean.type) : null;
+    const span = typeof bean.object === "string" || typeof bean.object === "number" ? String(bean.object) : null;
+    const unfilteredFirstPage = type === 1 && (span === "1" || span === "7") && list.length === 4 && list[0] === "" && list[1] === "" && String(list[2]) === "12" && String(list[3]) === "1" && zeroOrMissing(bean.lobbyId) && zeroOrMissing(bean.tableId);
+    return { own: ownRequests.get(bean) ?? null, type, span, unfilteredFirstPage };
+  }
+  function parseReportObject(raw) {
+    if (typeof raw === "string") {
+      if (!raw.trim()) return null;
+      try {
+        const parsed = JSON.parse(raw);
+        return isObject(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return isObject(raw) ? raw : null;
+  }
+  function officialValidAmount(raw) {
+    if (typeof raw !== "number" && typeof raw !== "string") return null;
+    if (typeof raw === "string" && !raw.trim()) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER / 100 ? value : null;
+  }
+  function responseLooksLikeUnfilteredBetReport(bean, binding) {
+    if (Number(bean.cmd) !== 13 || Number(bean.type) !== 1 || binding.type !== 1 || !binding.unfilteredFirstPage) return false;
+    if (!zeroOrMissing(bean.lobbyId) || !zeroOrMissing(bean.tableId)) return false;
+    if (Array.isArray(bean.list)) {
+      const list = bean.list;
+      if (list.length !== 4 || list[0] !== "" || list[1] !== "" || String(list[2]) !== "12" || String(list[3]) !== "1") return false;
+    }
+    return true;
+  }
+  function parseOfficialReply(bean) {
+    if (bean.codeId === null || bean.codeId === void 0 || bean.codeId === "" || Number(bean.codeId) !== 0) return null;
+    const report = parseReportObject(bean.object);
+    if (!report || !Array.isArray(report.records)) return null;
+    for (const key of ["pageNow", "pageCount", "pageSize", "rowCount"]) {
+      const value = Number(report[key]);
+      if (!Number.isFinite(value) || value < 0) return null;
+    }
+    if (!Array.isArray(bean.dList) || bean.dList.length !== 3) return null;
+    return officialValidAmount(bean.dList[1]);
+  }
+  function createDgOfficialTurnover(W, getAccount, canRefresh = () => true) {
+    let disposed = false;
+    let objectId = 0;
+    const objectIds = /* @__PURE__ */ new WeakMap();
+    const ownRequests = /* @__PURE__ */ new WeakMap();
+    let requestId = 0;
+    let currentDay = taipeiDay();
+    let currentAccount = safeAccountIdentity();
+    let today = emptyValue("today", currentDay);
+    let week = emptyValue("week", currentDay);
+    let socket = null;
+    let originalSend = null;
+    let sendObserver = null;
+    let listenerAttached = false;
+    let listenerMode = null;
+    const listenerOwner = {};
+    const bindings = [];
+    let pending = null;
+    let remaining = [];
+    let timeout = null;
+    let lastCycleAt = 0;
+    let reconciliationRequired = false;
+    const interval = setInterval(() => refresh(false), DG_OFFICIAL_REFRESH_MS);
+    function safeAccountIdentity() {
+      let account = null;
+      try {
+        account = getAccount();
+      } catch {
+        return "unavailable";
+      }
+      return accountIdentity(account, objectIds, () => ++objectId);
+    }
+    function update(period, patch) {
+      const previous = period === "today" ? today : week;
+      const next = { ...previous, ...patch, range: rangeFor(period, currentDay), scope: SCOPE };
+      if (period === "today") today = next;
+      else week = next;
+    }
+    function clearTimeoutForPending() {
+      if (timeout !== null) clearTimeout(timeout);
+      timeout = null;
+    }
+    function markCurrentCancelled() {
+      if (!pending) return;
+      pending.cancelled = true;
+      pending = null;
+      clearTimeoutForPending();
+    }
+    function resetValues(status = EMPTY_STATUS) {
+      markCurrentCancelled();
+      remaining = [];
+      today = emptyValue("today", currentDay, status);
+      week = emptyValue("week", currentDay, status);
+    }
+    function ensureFreshIdentity() {
+      const day = taipeiDay();
+      const account = safeAccountIdentity();
+      if (day === currentDay && account === currentAccount) return;
+      currentDay = day;
+      currentAccount = account;
+      resetValues();
+      reconciliationRequired = false;
+    }
+    function detachSocket() {
+      if (!socket) return;
+      if (listenerAttached && typeof socket.off === "function") {
+        try {
+          if (listenerMode === "emitter") socket.off(EVENT_RECEIVED_SUCCESS, receivedHandler);
+          else socket.off(EVENT_RECEIVED_SUCCESS, listenerOwner, receivedHandler);
+        } catch {
+        }
+      }
+      if (sendObserver && socket.sendData === sendObserver && originalSend) socket.sendData = originalSend;
+      listenerAttached = false;
+      listenerMode = null;
+      originalSend = null;
+      sendObserver = null;
+      socket = null;
+    }
+    function attach(runtime) {
+      if (socket === runtime.socket && sendObserver && listenerAttached) return true;
+      detachSocket();
+      if (typeof runtime.socket.sendData !== "function" || typeof runtime.socket.on !== "function" || typeof runtime.socket.off !== "function") return false;
+      socket = runtime.socket;
+      const previousSend = runtime.socket.sendData;
+      originalSend = previousSend;
+      sendObserver = function observedSend(bean) {
+        if (!disposed && socket === runtime.socket) observeOutgoing(bean);
+        return previousSend.call(this, bean);
+      };
+      runtime.socket.sendData = sendObserver;
+      try {
+        runtime.socket.on(EVENT_RECEIVED_SUCCESS, listenerOwner, receivedHandler);
+        listenerMode = "laya";
+        listenerAttached = true;
+      } catch {
+        try {
+          runtime.socket.on(EVENT_RECEIVED_SUCCESS, receivedHandler);
+          listenerMode = "emitter";
+          listenerAttached = true;
+        } catch {
+          if (runtime.socket.sendData === sendObserver) runtime.socket.sendData = originalSend;
+          socket = null;
+          originalSend = null;
+          sendObserver = null;
+          return false;
+        }
+      }
+      return true;
+    }
+    function observeOutgoing(bean) {
+      const binding = readRequestBinding(bean, ownRequests);
+      if (!binding) return;
+      bindings.push(binding);
+      if (!binding.own && pending) {
+        resetValues("\u5B98\u65B9\u5831\u8868\u8ACB\u6C42\u91CD\u758A\uFF0C\u5F85\u540C\u6B65");
+        reconciliationRequired = true;
+        return;
+      }
+      if (bindings.length > 64) failClosed("\u5B98\u65B9\u5831\u8868\u8ACB\u6C42\u7121\u6CD5\u5C0D\u61C9\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
+    }
+    function finishPeriod(request, value, status) {
+      if (pending?.id !== request.id) return;
+      clearTimeoutForPending();
+      pending = null;
+      if (!request.cancelled && request.account === currentAccount && request.taipeiDay === currentDay) {
+        update(request.period, { value, status, updatedAt: value === null ? null : Date.now() });
+      }
+      sendNext();
+    }
+    function failClosed(status) {
+      clearTimeoutForPending();
+      if (pending && !pending.cancelled && pending.account === currentAccount && pending.taipeiDay === currentDay) {
+        update(pending.period, { value: null, status, updatedAt: null });
+      }
+      if (pending) pending.expired = true;
+      pending = null;
+      remaining = [];
+      reconciliationRequired = true;
+    }
+    function receivedHandler(bean) {
+      if (disposed || !isObject(bean) || Number(bean.cmd) !== 13) return;
+      const binding = bindings.shift();
+      if (!binding) {
+        if (pending) failClosed("\u5B98\u65B9\u5831\u8868\u56DE\u8986\u7121\u6CD5\u5C0D\u61C9\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
+        return;
+      }
+      if (!binding.own) return;
+      const request = binding.own;
+      if (request.expired || request.cancelled || pending?.id !== request.id) {
+        if (!pending) reconciliationRequired = false;
+        return;
+      }
+      if (!responseLooksLikeUnfilteredBetReport(bean, binding)) {
+        failClosed("\u5B98\u65B9\u5831\u8868\u56DE\u8986\u4E0D\u7B26\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
+        return;
+      }
+      const amount = parseOfficialReply(bean);
+      finishPeriod(request, amount, amount === null ? "\u5B98\u65B9\u5831\u8868\u56DE\u8986\u7121\u6548" : "\u5DF2\u540C\u6B65\u5B98\u65B9\u5831\u8868");
+    }
+    function requestPeriod(period) {
+      ensureFreshIdentity();
+      if (disposed) return;
+      const runtime = findRuntime(W);
+      if (!runtime || !attach(runtime)) {
+        update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5831\u8868\u5C31\u7DD2", updatedAt: null });
+        remaining = [];
+        return;
+      }
+      let suppliedAccount;
+      try {
+        suppliedAccount = getAccount();
+      } catch {
+        suppliedAccount = null;
+      }
+      if (isObject(suppliedAccount) && suppliedAccount !== runtime.playerInfo) {
+        resetValues("DG\u5DE5\u4F5C\u968E\u6BB5\u5DF2\u8B8A\u66F4\uFF0C\u5F85\u91CD\u65B0\u5B89\u88DD\u6838\u5C0D");
+        reconciliationRequired = true;
+        return;
+      }
+      if (runtime.socket.socket?.connected === false) {
+        update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5831\u8868\u9023\u7DDA", updatedAt: null });
+        remaining = [];
+        return;
+      }
+      if (runtime.playerInfo.token === void 0 || runtime.playerInfo.token === null || runtime.playerInfo.token === "") {
+        update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5E33\u865F\u5C31\u7DD2", updatedAt: null });
+        remaining = [];
+        return;
+      }
+      const request = {
+        id: ++requestId,
+        period,
+        account: currentAccount,
+        taipeiDay: currentDay,
+        sentAt: Date.now(),
+        expired: false,
+        cancelled: false
+      };
+      const bean = { cmd: 13, type: 1, token: runtime.playerInfo.token, object: period === "today" ? "1" : "7", list: ["", "", "12", "1"] };
+      ownRequests.set(bean, request);
+      pending = request;
+      update(period, { status: "\u8B80\u53D6DG\u5B98\u65B9\u5831\u8868\u4E2D" });
+      try {
+        runtime.socket.sendData(bean);
+      } catch {
+        if (pending?.id === request.id) finishPeriod(request, null, "DG\u5B98\u65B9\u5831\u8868\u8ACB\u6C42\u5931\u6557");
+        return;
+      }
+      if (!bindings.some((binding) => binding.own?.id === request.id)) {
+        failClosed("DG\u5B98\u65B9\u5831\u8868\u8ACB\u6C42\u7121\u6CD5\u9A57\u8B49\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
+        return;
+      }
+      timeout = setTimeout(() => {
+        if (disposed || pending?.id !== request.id) return;
+        request.expired = true;
+        failClosed("DG\u5B98\u65B9\u5831\u8868\u903E\u6642\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
+      }, DG_OFFICIAL_TIMEOUT_MS);
+    }
+    function sendNext() {
+      if (disposed || pending || reconciliationRequired) return;
+      const period = remaining.shift();
+      if (period) requestPeriod(period);
+    }
+    function refresh(force = false) {
+      if (disposed) return;
+      ensureFreshIdentity();
+      if (!canRefresh()) return;
+      if (pending) return;
+      if (reconciliationRequired || bindings.length) return;
+      const now = Date.now();
+      if (!force && now - lastCycleAt < DG_OFFICIAL_REFRESH_MS) return;
+      lastCycleAt = now;
+      remaining = ["today", "week"];
+      sendNext();
+    }
+    function view() {
+      ensureFreshIdentity();
+      return { platform: "DG", today: { ...today }, week: { ...week } };
+    }
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      clearInterval(interval);
+      clearTimeoutForPending();
+      markCurrentCancelled();
+      remaining = [];
+      detachSocket();
+    }
+    return { view, refresh, dispose };
+  }
+
+  // lib/dg-mobile-native.ts
+  function isRecord(value) {
+    return !!value && typeof value === "object";
+  }
+  function safeProperty(value, key) {
+    try {
+      return isRecord(value) ? value[key] : void 0;
+    } catch {
+      return void 0;
+    }
+  }
+  function sceneNodes(stage) {
+    const output = [];
+    const seen = /* @__PURE__ */ new Set();
+    const queue = [stage];
+    while (queue.length && output.length < 12e3) {
+      const value = queue.pop();
+      if (!isRecord(value) || seen.has(value)) continue;
+      if (value.destroyed) continue;
+      seen.add(value);
+      output.push(value);
+      const count = Math.min(Math.max(0, Number(value.numChildren) || 0), 1e3);
+      const getChildAt = safeProperty(value, "getChildAt");
+      if (typeof getChildAt !== "function") continue;
+      for (let index = 0; index < count; index++) {
+        try {
+          queue.push(getChildAt.call(value, index));
+        } catch {
+        }
+      }
+    }
+    return output;
+  }
+  function isDgMultiLobbyCard(value) {
+    if (!isRecord(value)) return false;
+    const gameInfo = safeProperty(value, "gameInfo");
+    const betBtn = safeProperty(value, "betBtn");
+    const betMan = safeProperty(value, "betMan");
+    const socketMan = safeProperty(safeProperty(value, "playerInfo"), "socketMan");
+    return value.tableId !== void 0 && isRecord(gameInfo) && isRecord(betBtn) && betBtn.Banker !== void 0 && betBtn.Player !== void 0 && isRecord(betMan) && typeof betMan.confirm === "function" && typeof betMan.cancel === "function" && isRecord(safeProperty(value, "betMoneyTmp")) && isRecord(safeProperty(value, "betMoneyTrue")) && typeof safeProperty(value, "confirmBet") === "function" && isRecord(socketMan) && typeof socketMan.sendData === "function";
+  }
+  function hasDgVerifiedDirectPacketBuilder(card) {
+    if (!isDgMultiLobbyCard(card)) return false;
+    let source = "";
+    try {
+      source = Function.prototype.toString.call(card.confirmBet);
+    } catch {
+      return false;
+    }
+    return ["betMoneyTmp", "betMoneyTrue", "gameNo", "BET_CHIP", "encrypt", "demo"].every((marker) => source.includes(marker));
+  }
+  function inspectDgMobileNativeSurface(W) {
+    const win = W;
+    const width = Number(win?.innerWidth);
+    const height = Number(win?.innerHeight);
+    const portrait = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > width;
+    const stage = win?.Laya?.stage;
+    if (!isRecord(stage) || typeof safeProperty(stage, "getChildAt") !== "function") {
+      return { readiness: "waiting-stage", portrait, cardCount: 0, rejectedCardCount: 0 };
+    }
+    const cards = sceneNodes(stage).filter(isDgMultiLobbyCard);
+    if (!cards.length) return { readiness: "waiting-multi-table", portrait, cardCount: 0, rejectedCardCount: 0 };
+    const rejectedCardCount = cards.filter((card) => !hasDgVerifiedDirectPacketBuilder(card)).length;
+    return {
+      readiness: rejectedCardCount ? "unverified-packet-builder" : "compatible",
+      portrait,
+      cardCount: cards.length,
+      rejectedCardCount
+    };
+  }
+
+  // lib/dg-mobile-public-source.ts
+  function exportDgMobileLoadedPublicScripts(documentLike) {
+    const doc = documentLike;
+    const base = typeof doc?.baseURI === "string" ? doc.baseURI : doc?.location?.href;
+    if (typeof base !== "string" || !base) return { version: 1, status: "unavailable", scripts: [] };
+    let baseUrl;
+    try {
+      baseUrl = new URL(base);
+    } catch {
+      return { version: 1, status: "unavailable", scripts: [] };
+    }
+    const scripts = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const script of Array.from(doc?.scripts ?? [])) {
+      const raw = typeof script?.src === "string" ? script.src.trim() : "";
+      if (!raw) continue;
+      let source;
+      try {
+        source = new URL(raw, baseUrl);
+      } catch {
+        continue;
+      }
+      if (source.protocol !== "https:" && source.protocol !== "http:") continue;
+      const url = source.origin + source.pathname;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      scripts.push({ url, type: typeof script.type === "string" ? script.type : "" });
+    }
+    return { version: 1, status: "ready", scripts };
+  }
+
   // lib/dg-console-entry.ts
   (() => {
     const previous = window.__DG_SINGLEPAGE__;
@@ -1734,7 +2304,7 @@ ${DG_SMALL_CSS}
       if (last) ledger.state.levels.global = ledger.level(last.tableId, last.scope);
     }
     function desiredScope() {
-      return roomCount === "1" && singleStaking === "martingale" ? "global" : "table";
+      return roomCount === "1" && singleStaking !== "flat" ? "global" : "table";
     }
     function stakingMode() {
       return roomCount === "1" ? singleStaking : "flat";
@@ -1743,7 +2313,7 @@ ${DG_SMALL_CSS}
       return stakingMode() === "flat" || !running && !ledger.pending().length && startMode === "fresh" ? 0 : ledger.level(tableId, mode);
     }
     function stakeAmount(tableId, amount = base, mode = scope) {
-      return martingaleAmount(amount, amountLevel(tableId, mode));
+      return stakingAmount(amount, amountLevel(tableId, mode), stakingMode());
     }
     function stakeDiagnostics() {
       return { base: running || ledger.pending().length ? base : Number(q("base").value), startMode, staking: stakingMode(), levels: { ...ledger.state.levels }, tables: boards().map((c) => ({ table: c.gameInfo.tableName, tableId: String(c.tableId), savedLevel: ledger.level(String(c.tableId), scope), effectiveLevel: amountLevel(String(c.tableId)), nextAmount: stakeAmount(String(c.tableId), !running && !ledger.pending().length ? Number(q("base").value) : base) })), recentBets: ledger.state.bets.slice(-10).map((b) => ({ ...b })) };
@@ -1902,6 +2472,7 @@ ${DG_SMALL_CSS}
     }
     q("provider").value = provider;
     const providerMenu = installDgProviderMenu(shadow, AI_PROVIDER_OPTIONS);
+    const official = createDgOfficialTurnover(window, () => account, () => !busy);
     function selectionLocked() {
       return running || busy || ledger.pending().length > 0;
     }
@@ -2061,7 +2632,7 @@ ${DG_SMALL_CSS}
       running = true;
       once = testOnce;
       epoch++;
-      log(testOnce ? "\u6E2C\u8A66\u4E00\u7B46\u5B8C\u6574\u6D41\u7A0B\uFF08\u4E0D\u662F\u591A\u684C\u6279\u6B21\uFF09" : roomCount === "1" && stakingMode() === "martingale" ? "\u540C\u6642 1 \u684C\u555F\u52D5\uFF1A\u8DE8\u623F\u95F4\u63A5\u7E8C\u5171\u7528\u99AC\u4E01\uFF0C\u7D50\u7B97\u5F8C\u624D\u627E\u4E0B\u4E00\u684C" : `\u540C\u6642 ${selected.size} \u684C\u555F\u52D5\uFF1A\u5404\u684C\u56FA\u5B9A\u5E73\u6CE8\uFF0C\u4E0D\u7B49\u5176\u4ED6\u684C\u7D50\u7B97`);
+      log(testOnce ? "\u6E2C\u8A66\u4E00\u7B46\u5B8C\u6574\u6D41\u7A0B\uFF08\u4E0D\u662F\u591A\u684C\u6279\u6B21\uFF09" : roomCount === "1" && stakingMode() !== "flat" ? `\u540C\u6642 1 \u684C\u555F\u52D5\uFF1A\u8DE8\u623F\u9593\u63A5\u7E8C${stakingMode() === "doubling" ? "\u500D\u6295\u6CD5" : "\u99AC\u4E01"}\uFF0C\u7D50\u7B97\u5F8C\u624D\u627E\u4E0B\u4E00\u684C` : `\u540C\u6642 ${selected.size} \u684C\u555F\u52D5\uFF1A\u5404\u684C\u56FA\u5B9A\u5E73\u6CE8\uFF0C\u4E0D\u7B49\u5176\u4ED6\u684C\u7D50\u7B97`);
       void tick();
     }
     function showPage(name) {
@@ -2086,6 +2657,7 @@ ${DG_SMALL_CSS}
     }
     function render() {
       if (disposed) return;
+      renderOfficialTurnover(shadow, official.view());
       q("status").textContent = `${running ? "\u57F7\u884C\u4E2D" : "\u5DF2\u505C\u6B62"}\uFF5C${userStatus(status)}`;
       q("hero-status").textContent = userStatus(status);
       const eventSignature = logs.join("\n");
@@ -2124,16 +2696,17 @@ ${DG_SMALL_CSS}
       q("auto-tables").classList.toggle("selected", !manualSelection);
       q("auto-tables").textContent = manualSelection ? "\u5207\u56DE\u81EA\u52D5\u627E\u684C" : "\u81EA\u52D5\u627E\u684C\u4E2D";
       q("selection-mode").textContent = manualSelection ? "\u6307\u5B9A\u684C\u53F0 \xB7 \u4E0D\u81EA\u52D5\u88DC\u5176\u4ED6\u684C" : "\u81EA\u52D5\u627E\u684C \xB7 \u958B\u653E\u4E0B\u6CE8\u5C31\u52A0\u5165";
-      q("scope").options[0].textContent = stakingMode() === "flat" ? "\u5E73\u6CE8 \xB7 \u91D1\u984D\u56FA\u5B9A" : "\u55AE\u684C\u5171\u7528\u99AC\u4E01 \xB7 \u63DB\u623F\u63A5\u7E8C 1\u21923\u21927\u219215";
+      q("scope").options[0].textContent = stakingMode() === "flat" ? "\u5E73\u6CE8 \xB7 \u91D1\u984D\u56FA\u5B9A" : stakingMode() === "doubling" ? "\u55AE\u684C\u5171\u7528\u500D\u6295 \xB7 \u63DB\u623F\u63A5\u7E8C 1\u21922\u21924\u21928" : "\u55AE\u684C\u5171\u7528\u99AC\u4E01 \xB7 \u63DB\u623F\u63A5\u7E8C 1\u21923\u21927\u219215";
+      q("doubling-reminder").hidden = stakingMode() !== "doubling";
       q("single-staking").value = stakingMode();
       q("single-staking").disabled = roomCount !== "1" || selectionLocked();
       q("start-mode").value = startMode;
       q("start-mode").disabled = running || busy;
-      q("staking-hint").textContent = roomCount === "1" ? singleStaking === "flat" ? "\u55AE\u684C\u5E73\u6CE8\uFF1A\u6BCF\u7B46\u56FA\u5B9A\u57FA\u672C\u984D\uFF0C\u63DB\u623F\u4E0D\u52A0\u6CE8\u3002" : `\u8DE8\u623F\u9593\u63A5\u7E8C\u99AC\u4E01\uFF1A\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E\u3001\u548C\u7DAD\u6301\u3002${startMode === "fresh" ? "\u65B0\u958B\u59CB\u9996\u7B46\u57FA\u672C\u984D\u3002" : "\u7E8C\u63A5\u4FDD\u7559\u5171\u7528\u968E\u7D1A\u3002"}` : "\u591A\u684C\u56FA\u5B9A\u5E73\u6CE8\uFF0C\u4E0D\u53EF\u66F4\u6539\u3002";
+      q("staking-hint").textContent = roomCount === "1" ? singleStaking === "flat" ? "\u55AE\u684C\u5E73\u6CE8\uFF1A\u6BCF\u7B46\u56FA\u5B9A\u57FA\u672C\u984D\uFF0C\u63DB\u623F\u4E0D\u52A0\u6CE8\u3002" : `\u8DE8\u623F\u9593\u63A5\u7E8C${singleStaking === "doubling" ? "\u500D\u62951\u21922\u21924\u21928" : "\u99AC\u4E011\u21923\u21927\u219215"}\uFF1A\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E\u3001\u548C\u7DAD\u6301\u3002${startMode === "fresh" ? "\u65B0\u958B\u59CB\u9996\u7B46\u57FA\u672C\u984D\u3002" : "\u7E8C\u63A5\u4FDD\u7559\u5171\u7528\u968E\u7D1A\u3002"}` : "\u591A\u684C\u56FA\u5B9A\u5E73\u6CE8\uFF0C\u4E0D\u53EF\u66F4\u6539\u3002";
       q("stop-loss").disabled = q("take-profit").disabled = q("base").disabled = q("cap").disabled = selectionLocked();
       q("run-pill").textContent = running ? "\u25CF \u81EA\u52D5\u4E0B\u6CE8\u4E2D" : pending.length ? "\u25CF \u5F85\u7D50\u7B97" : "\u25CF \u5DF2\u505C\u6B62";
       q("run-pill").classList.toggle("idle", !running);
-      q("method").textContent = `${stakingMode() === "flat" ? "\u5E73\u6CE8 \xB7 \u56FA\u5B9A\u91D1\u984D" : "\u55AE\u684C \xB7 \u99AC\u4E01"}\uFF08${selected.size} \u684C\uFF09`;
+      q("method").textContent = `${stakingMode() === "flat" ? "\u5E73\u6CE8 \xB7 \u56FA\u5B9A\u91D1\u984D" : stakingMode() === "doubling" ? "\u55AE\u684C \xB7 \u500D\u6295\u6CD5" : "\u55AE\u684C \xB7 \u99AC\u4E01"}\uFF08${selected.size} \u684C\uFF09`;
       q("parallel-count").value = q("count").value = roomCount;
       q("parallel-count").disabled = q("count").disabled = q("scan").disabled = selectionLocked();
       q("parallel-summary").textContent = `\u5DF2\u9078 ${selected.size} \u684C \xB7 \u5F85\u63A5\u53D7 ${pending.filter((b) => b.state !== "accepted").length} \xB7 \u5F85\u7D50\u7B97 ${pending.filter((b) => b.state === "accepted").length}`;
@@ -2143,7 +2716,7 @@ ${DG_SMALL_CSS}
       const focusId = focus ? String(focus.tableId) : "";
       const shownLevel = currentBet?.level ?? amountLevel(focusId, previewScope);
       const shownStaking = currentBet?.staking ?? stakingMode();
-      const multiplier = shownStaking === "flat" ? 1 : 2 ** (shownLevel + 1) - 1;
+      const multiplier = shownStaking === "flat" ? 1 : shownStaking === "doubling" ? 2 ** shownLevel : 2 ** (shownLevel + 1) - 1;
       const label = currentBet ? currentBet.state === "accepted" ? "\u5DF2\u63A5\u53D7\u91D1\u984D" : currentBet.state === "uncertain" ? "\u672A\u78BA\u5B9A\u91D1\u984D" : "\u5DF2\u9001\u51FA\u91D1\u984D" : "\u4E0B\u4E00\u6CE8\u9810\u89BD";
       q("amount-label").textContent = !running && !pending.length && (!Number.isSafeInteger(Number(q("base").value)) || Number(q("base").value) <= 0) ? "\u57FA\u672C\u55AE\u6CE8\u9808\u70BA\u6B63\u6574\u6578" : label;
       q("amount-rule").textContent = `\u57FA\u672C ${money(currentBet ? currentBet.amount / multiplier : previewBase)} \xB7 ${shownStaking === "flat" ? "\u5E73\u6CE8 \xD71" : `\u7B2C${shownLevel + 1}\u968E \xD7${multiplier}`}`;
@@ -2281,7 +2854,9 @@ ${DG_SMALL_CSS}
       riskApproved = false;
       riskTestOnce = testOnce;
       riskReturnFocus = shadow.activeElement;
-      q("risk-stake-summary").textContent = `${startMode === "fresh" ? "\u65B0\u958B\u59CB\uFF1A\u9996\u7B46\u57FA\u672C\u984D" : "\u7E8C\u63A5\uFF1A\u6CBF\u7528\u914D\u6CE8\u968E\u7D1A"} \xB7 \u57FA\u672C ${q("base").value} \xB7 ${stakingMode() === "flat" ? "\u5E73\u6CE8" : `\u99AC\u4E01 1\u21923\u21927\u219215`}`;
+      q("risk-doubling-warning").hidden = stakingMode() !== "doubling";
+      q("risk-doubling-warning").textContent = `\u4F7F\u7528\u500D\u6295\u6CD5\uFF0C\u8ACB\u8A2D\u5B9A\u6B62\u76C8\u8207\u6B62\u640D\u3002${!q("take-profit").value || !q("stop-loss").value ? "\u76EE\u524D\u6B62\u76C8\uFF0F\u6B62\u640D\u5C1A\u672A\u5168\u90E8\u8A2D\u5B9A\uFF0C\u8ACB\u5148\u81F3\u8A2D\u5B9A\u9801\u78BA\u8A8D\u3002" : "\u8ACB\u78BA\u8A8D\u76EE\u524D\u6B62\u76C8\u8207\u6B62\u640D\u91D1\u984D\u7B26\u5408\u4F60\u7684\u8A2D\u5B9A\u3002"}`;
+      q("risk-stake-summary").textContent = `${startMode === "fresh" ? "\u65B0\u958B\u59CB\uFF1A\u9996\u7B46\u57FA\u672C\u984D" : "\u7E8C\u63A5\uFF1A\u6CBF\u7528\u914D\u6CE8\u968E\u7D1A"} \xB7 \u57FA\u672C ${q("base").value} \xB7 ${stakingMode() === "flat" ? "\u5E73\u6CE8" : stakingMode() === "doubling" ? "\u500D\u6295 1\u21922\u21924\u21928" : `\u99AC\u4E01 1\u21923\u21927\u219215`}`;
       q("ack").checked = false;
       q("risk-confirm").disabled = true;
       q("risk-dialog").hidden = false;
@@ -2355,7 +2930,7 @@ ${DG_SMALL_CSS}
         return;
       }
       const value = q("single-staking").value;
-      if (value !== "flat" && value !== "martingale") return;
+      if (value !== "flat" && value !== "martingale" && value !== "doubling") return;
       singleStaking = value;
       scope = desiredScope();
       render();
@@ -2547,11 +3122,15 @@ ${DG_SMALL_CSS}
     document.addEventListener("visibilitychange", visibility);
     const timer = setInterval(() => void tick(), 500);
     window.__DG_SINGLEPAGE__ = {
-      version: "2.8.5-single-selectable-staking",
+      version: "2.8.7-mobile-evidence-gate",
       start: () => requestStart(),
       stop,
       scan,
       stakeDiagnostics,
+      officialTurnover: official.view,
+      refreshOfficialTurnover: () => official.refresh(true),
+      mobileDiagnostics: () => inspectDgMobileNativeSurface(window),
+      exportMobilePublicSources: () => exportDgMobileLoadedPublicScripts(document),
       status: () => ({ running, status, mini, base, startMode, selectionMode: manualSelection ? "manual" : "auto", panelSize: { width: panelWidth, height: panelHeight }, pending: ledger.pending().map((b) => ({ ...b })), selected: [...selected], roomCount, scope, staking: stakingMode(), riskLimits: { ...riskLimits }, roundPnl: roundPnl(), unacknowledgedFunds: unacknowledgedFunds() }),
       rounds: () => boards().filter((c) => selected.has(String(c.tableId))).map((c) => ({ table: c.gameInfo.tableName, round: c.gameInfo.playId, ...currentRoundState(c) })),
       diagnostics: () => boards().map((c) => ({ table: c.gameInfo?.tableName || String(c.tableId), tableId: String(c.tableId), selected: selected.has(String(c.tableId)), round: c.gameInfo?.playId, gameState: c.gameInfo?.stateId, countdown: Math.floor(remaining(c)), ready: ready(c), ...checkDgAmount(c, stakeAmount(String(c.tableId))) })),
@@ -2565,6 +3144,7 @@ ${DG_SMALL_CSS}
         disposed = true;
         epoch++;
         clearInterval(timer);
+        official.dispose();
         cleanupFeedback();
         cleanupResize();
         providerMenu.cleanup();
@@ -2579,6 +3159,7 @@ ${DG_SMALL_CSS}
     attach(nodes());
     scan();
     showPage("overview");
+    official.refresh();
     render();
   })();
 })();

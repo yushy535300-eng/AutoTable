@@ -1,0 +1,31 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {createMtNativeObserver}=require('./mt-native-observer');
+const entries=JSON.parse(fs.readFileSync(path.join(__dirname,'../tests/fixtures/mt-native-bet-observation.json'),'utf8'));
+const live=new Map(),observer=createMtNativeObserver();
+for(const entry of entries){
+ const b=entry.data.body;
+ if(b?.table_id&&b.game_sn)live.set(b.table_id,{clock:{gameSn:b.game_sn,shoe:String(b.shoe),round:Number(b.round)}});
+ observer.consume(entry,id=>live.get(id));
+}
+let report=observer.report();
+assert.equal(report.acceptedCount,4);
+assert.deepEqual(report.records.map(r=>r.amount),[100,400,500,500]);
+assert.equal(report.groups.length,3);
+const b03=report.groups.find(g=>g.tableId==='BAV03');
+assert.equal(b03.acceptedAmount,500);assert.equal(b03.recordIds.length,2);
+assert.equal(b03.shoe,'1150');assert.equal(b03.round,15);
+assert.equal(b03.settlement.points,-500);
+assert.equal(report.observedGroupPoints,-500);assert.equal(report.settledGroupCount,1);
+assert(report.groups.filter(g=>g.tableId!=='BAV03').every(g=>g.settlement===null));
+assert(report.records.every(r=>r.requestRoomContext===1),'Request room context must not be confused with physical table room');
+const win=entries.find(e=>e.actions.includes('/api/v1/member/me/win'));
+observer.consume(win,id=>live.get(id));assert.equal(observer.report().observedGroupPoints,-500);
+observer.consume({...win,data:{...win.data,msg:{span:{...win.data.msg.span,round:16}}}},id=>live.get(id));assert.equal(observer.report().observedGroupPoints,-500);assert.equal(observer.report().unmatchedSettlements.length,1);
+const first=entries.find(e=>e.direction==='send'&&e.actions.some(a=>a.endsWith('/bet')));
+const ack=entries.find(e=>e.direction==='receive'&&e.actions.some(a=>a.endsWith('/bet')));
+const ambiguous=createMtNativeObserver();ambiguous.consume(first,()=>null);ambiguous.consume(first,()=>null);ambiguous.consume(ack,()=>null);
+assert.equal(ambiguous.report().acceptedCount,0);assert(ambiguous.report().records.every(r=>r.reviewReason));
+const missing=createMtNativeObserver();missing.consume(first,()=>null);const malformed=JSON.parse(JSON.stringify(ack));delete malformed.data.err;missing.consume(malformed,()=>null);assert.equal(missing.report().acceptedCount,0);
+const rejected=createMtNativeObserver();rejected.consume(first,()=>null);rejected.consume({...ack,data:{...ack.data,err:7}},()=>null);assert.equal(rejected.report().acceptedCount,0);assert.equal(rejected.report().records[0].state,'rejected');
+const empty=createMtNativeObserver();empty.consume(win,()=>null);assert.equal(empty.report().observedGroupPoints,0);assert.equal(empty.report().acceptedCount,0);
+console.log('PASS 真實MT回覆接線：4次接受、3桌/局分組；B03同局100+400合計500，個人結算-500只算一次；另2桌未結算；缺碼、錯局、無下注及並行ACK不假報成功。');

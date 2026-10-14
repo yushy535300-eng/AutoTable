@@ -1,0 +1,1745 @@
+[
+  {
+    "at": "2026-10-13T15:27:00.854Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 18,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:00.885Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 14,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:01.578Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/end"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/end",
+        "path": null
+      },
+      "body": {
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 31,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:01.647Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 17,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:02.435Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 16,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:02.456Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 13,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:03.485Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 15,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:03.544Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 12,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:04.414Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 14,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:04.434Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 11,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:05.436Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 13,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:05.461Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 10,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:06.417Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 12,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:06.483Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 9,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:07.339Z",
+    "direction": "send",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "method": "POST",
+      "action": {
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+        "data": {
+          "gametype_id": 3,
+          "game_id": 1,
+          "room_id": 1,
+          "table_id": "BAV03"
+        }
+      },
+      "body": {
+        "commission": true,
+        "game_sn": "OFFLINE-GAME-2",
+        "order": {
+          "slips": [
+            {
+              "play_id": 1,
+              "amount": 100
+            }
+          ]
+        },
+        "v": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:07.530Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+      "err": 0,
+      "msg": {
+        "table": "BAV03"
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:07.539Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/member/me/table/betinfo"
+    ],
+    "data": {
+      "action": "/api/v1/member/me/table/betinfo",
+      "err": 0,
+      "msg": {
+        "total": {
+          "total": 0
+        }
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:07.705Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 11,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:07.728Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 8,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:08.421Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 10,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:08.445Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 7,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:09.422Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 9,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:09.464Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 6,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:09.521Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/ready"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/ready",
+        "path": null
+      },
+      "body": {
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:09.548Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 20,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:10.434Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 8,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:10.452Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 5,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:10.478Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 19,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:11.278Z",
+    "direction": "send",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "method": "POST",
+      "action": {
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+        "data": {
+          "gametype_id": 3,
+          "game_id": 1,
+          "room_id": 1,
+          "table_id": "BAV03"
+        }
+      },
+      "body": {
+        "commission": true,
+        "game_sn": "OFFLINE-GAME-2",
+        "order": {
+          "slips": [
+            {
+              "play_id": "1",
+              "amount": 400
+            }
+          ]
+        },
+        "v": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:11.448Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 7,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:11.470Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+      "err": 0,
+      "msg": {
+        "table": "BAV03"
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:11.471Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 4,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:11.505Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/member/me/table/betinfo"
+    ],
+    "data": {
+      "action": "/api/v1/member/me/table/betinfo",
+      "err": 0,
+      "msg": {
+        "total": {
+          "total": 0
+        }
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:11.506Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 18,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:12.458Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 6,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:12.473Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 3,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:12.514Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 17,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:13.748Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 5,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:13.840Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 2,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:13.841Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 16,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.246Z",
+    "direction": "send",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "method": "POST",
+      "action": {
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+        "data": {
+          "gametype_id": 3,
+          "game_id": 1,
+          "room_id": 1,
+          "table_id": "BAV02"
+        }
+      },
+      "body": {
+        "commission": true,
+        "game_sn": "OFFLINE-GAME-3",
+        "order": {
+          "slips": [
+            {
+              "play_id": 1,
+              "amount": 500
+            }
+          ]
+        },
+        "v": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.418Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 4,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.434Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+      "err": 0,
+      "msg": {
+        "table": "BAV02"
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.437Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 1,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.480Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/member/me/table/betinfo"
+    ],
+    "data": {
+      "action": "/api/v1/member/me/table/betinfo",
+      "err": 0,
+      "msg": {
+        "total": {
+          "total": 0
+        }
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.481Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 15,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:14.752Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/end"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/end",
+        "path": null
+      },
+      "body": {
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 48,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:15.417Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 3,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:15.493Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 0,
+        "game_sn": "OFFLINE-GAME-2",
+        "room_id": 50,
+        "round": 15,
+        "shoe": 1150,
+        "table_id": "BAV03"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:15.532Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 14,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:16.277Z",
+    "direction": "send",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "method": "POST",
+      "action": {
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+        "data": {
+          "gametype_id": 3,
+          "game_id": 1,
+          "room_id": 1,
+          "table_id": "BAV01"
+        }
+      },
+      "body": {
+        "commission": true,
+        "game_sn": "OFFLINE-GAME-4",
+        "order": {
+          "slips": [
+            {
+              "play_id": 1,
+              "amount": 500
+            }
+          ]
+        },
+        "v": 1
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:16.430Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 2,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:16.448Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 13,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:16.464Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/bet"
+    ],
+    "data": {
+      "action": "/api/v1/gametype/*/game/*/room/*/table/*/bet",
+      "err": 0,
+      "msg": {
+        "table": "BAV01"
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:16.470Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/member/me/table/betinfo"
+    ],
+    "data": {
+      "action": "/api/v1/member/me/table/betinfo",
+      "err": 0,
+      "msg": {
+        "total": {
+          "total": 0
+        }
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:17.507Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 1,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:17.517Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 12,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:18.440Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 0,
+        "game_sn": "OFFLINE-GAME-3",
+        "room_id": 49,
+        "round": 32,
+        "shoe": 1155,
+        "table_id": "BAV02"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:18.451Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 11,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:19.810Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 10,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:20.450Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 9,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:21.430Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 8,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:22.424Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 7,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:23.456Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 6,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:24.447Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 5,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:25.713Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 4,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:26.389Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/member/me/win"
+    ],
+    "data": {
+      "action": {
+        "err": 0,
+        "name": "/api/v1/member/me/win"
+      },
+      "msg": {
+        "span": {
+          "points": -500,
+          "room_id": 50,
+          "round": 15,
+          "shoe": 1150,
+          "table_id": "BAV03"
+        }
+      }
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:26.430Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 3,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:27.422Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 2,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:28.439Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 1,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  },
+  {
+    "at": "2026-10-13T15:27:29.562Z",
+    "direction": "receive",
+    "transport": "WebSocket",
+    "endpoint": "wss://a1.ofalive99.net/game/ws",
+    "actions": [
+      "/api/v1/gametype/*/game/*/room/*/table/*/wait"
+    ],
+    "data": {
+      "action": {
+        "data": null,
+        "name": "/api/v1/gametype/*/game/*/room/*/table/*/wait",
+        "path": null
+      },
+      "body": {
+        "count": 0,
+        "game_sn": "OFFLINE-GAME-4",
+        "room_id": 48,
+        "round": 49,
+        "shoe": 1153,
+        "table_id": "BAV01"
+      },
+      "method": "POST"
+    }
+  }
+]
