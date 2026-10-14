@@ -137,6 +137,27 @@ catch { playwright = require('/tmp/dg-testdeps/node_modules/playwright'); }
     }
     await page.setViewportSize({width:390,height:844});
 
+    await frame.evaluate(() => {
+      const main=window.Laya.stage.getChildAt(0), handlers=[];
+      const socket={socket:{connected:true},on:(event,owner,fn)=>handlers.push({event,owner,fn}),off:(event,owner,fn)=>{for(let i=handlers.length-1;i>=0;i--)if(handlers[i].event===event&&handlers[i].owner===owner&&handlers[i].fn===fn)handlers.splice(i,1);},sendData:()=>undefined};
+      main.playerInfo.balance=1234.56;main.playerInfo.selectChip=100;main.playerInfo.socketMan=socket;
+      main._children=[{tableId:60102,gameInfo:{tableName:'RB02',stateId:0,gameNo:'manual-ui',countDown:0,roadArray:[]},playerInfo:main.playerInfo,betBtn:{Banker:{},Player:{}},betMan:{confirm:{},cancel:{}},betMoneyTmp:{},betMoneyTrue:{},confirmBet(){}}];
+      window.__MANUAL_TEST_SEND__=()=>{socket.sendData({cmd:6,tableId:60102,gameNo:'manual-ui'});for(const h of handlers.filter(h=>h.event==='RECEIVED_SUCCESS'))h.fn({cmd:6,tableId:60102,gameNo:'manual-ui',codeId:0,list:['{"banker":100}']});for(const h of handlers.filter(h=>h.event==='RECEIVED_SUCCESS'))h.fn({cmd:1007,tableId:60102,gameNo:'manual-ui',codeId:0,dList:[1234.56,95]});};
+    });
+    await page.getByTestId('header-record').click();
+    await page.getByTestId('dg-live-diagnostics').waitFor();
+    await page.waitForFunction(()=>document.querySelector('[data-testid="dg-live-diagnostics"]').textContent.includes('1,234.56'));
+    await frame.evaluate(()=>window.__MANUAL_TEST_SEND__());
+    await page.waitForFunction(()=>document.querySelector('[data-testid="dg-live-diagnostics"]').textContent.includes('接受 1'));
+    const diagnosticText=await page.getByTestId('dg-live-diagnostics').innerText();
+    assert(diagnosticText.includes('送出 1')&&diagnosticText.includes('結算 1'),'Live diagnostic shows matched native lifecycle');
+    assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().running),false,'Diagnostic recording never starts the automatic engine');
+    if(outputDir)await page.screenshot({path:path.join(outputDir,'dg-mobile-live-diagnostics.png'),fullPage:true});
+    const downloadPromise=page.waitForEvent('download');
+    await page.getByTestId('header-record').click();
+    const download=await downloadPromise;assert.equal(download.suggestedFilename(),'AutoBac-DG-manual-flow.json');
+    assert.equal(await page.getByTestId('dg-live-diagnostics').count(),0,'Diagnostic window closes after export');
+    assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().running),false,'Export does not resume automatic wagering');
     const before = await frame.evaluate(() => window.__DG_SINGLEPAGE__.status().running);
     await page.getByText('重連', {exact: true}).click();
     await page.waitForFunction(() => !!document.querySelector('iframe[title="DG 真人遊戲"]')?.contentWindow?.__DG_SINGLEPAGE__);
@@ -182,6 +203,6 @@ catch { playwright = require('/tmp/dg-testdeps/node_modules/playwright'); }
     await page.getByText('登出', {exact: true}).click();
     await page.getByPlaceholder('輸入 TZ 帳號', {exact: true}).waitFor();
     assert.deepEqual(errors, [], 'No browser runtime errors');
-    console.log('PASS：原登入→MT/DG選擇前不取遊戲Token→DG面板初始停止→待結算禁止切換→MT完整面板初始停止→兩平台待結算均阻擋切換→返回DG不重取Token→登出。全程離線攔截，無真實帳密或下注。');
+    console.log('PASS：手機診斷按鈕→即時餘額／桌卡／送出接受結算→JSON下載且不恢復自動下注；原登入→MT/DG選擇前不取遊戲Token→DG面板初始停止→待結算禁止切換→MT完整面板初始停止→兩平台待結算均阻擋切換→返回DG不重取Token→登出。全程離線攔截，無真實帳密或下注。');
   } catch (e) { console.error('Requests:',requests); console.error('Page:',await page.locator('body').innerText()); console.error('Runtime:',errors); console.error('Frame debug:',await page.evaluate(()=>[...document.querySelectorAll('iframe')].map(f=>{try{return {url:f.src,href:f.contentDocument?.location.href,stage:!!f.contentWindow.Laya?.stage,main:f.contentWindow.Laya?.stage?.getChildAt(0)?.currentView,count:f.contentWindow.__MULTI_NAV_COUNT__}}catch(e){return {url:f.src,error:String(e)}}}))); throw e; } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

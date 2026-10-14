@@ -26,21 +26,30 @@ SOFTWARE.
 (() => {
   // lib/dg-scene.ts
   function readDgSceneNodes(stage, maximum = 12e3) {
-    const output = [], queue = [stage], seen = /* @__PURE__ */ new Set();
+    const output = [], queue = [stage], queued = /* @__PURE__ */ new Set([stage]);
     let cursor = 0;
+    const enqueue = (child) => {
+      if (child && typeof child === "object" && !queued.has(child) && queue.length < maximum * 2) {
+        queued.add(child);
+        queue.push(child);
+      }
+    };
     while (cursor < queue.length && output.length < maximum) {
       const node = queue[cursor++];
-      if (!node || typeof node !== "object" || seen.has(node) || node.destroyed) continue;
-      seen.add(node);
+      if (!node || typeof node !== "object" || node.destroyed) continue;
       output.push(node);
-      const count = Math.min(1e3, Math.max(0, Number(node.numChildren) || 0));
-      if (typeof node.getChildAt !== "function") continue;
-      for (let index = 0; index < count && queue.length < maximum * 2; index++) {
-        try {
-          const child = node.getChildAt(index);
-          if (child && !seen.has(child)) queue.push(child);
-        } catch {
+      try {
+        const count = Math.min(1e3, Math.max(0, Number(node.numChildren) || 0));
+        if (typeof node.getChildAt === "function") {
+          for (let index = 0; index < count; index++) {
+            try {
+              enqueue(node.getChildAt(index));
+            } catch {
+            }
+          }
         }
+        if (Array.isArray(node._children)) for (const child of node._children.slice(0, 1e3)) enqueue(child);
+      } catch {
       }
     }
     return output;
@@ -53,6 +62,52 @@ SOFTWARE.
       node = node.parent;
     }
     return seen.size > 0;
+  }
+  function findDgScenePlayer(nodes) {
+    for (const node of nodes) {
+      for (const player of [node?.playerInfo, node]) {
+        if (player && typeof player === "object" && typeof player.socketMan?.sendData === "function") return player;
+      }
+    }
+    return null;
+  }
+  function dgSceneWallet(player) {
+    if (!player || player.socketMan?.socket?.connected === false) return null;
+    const value = player.balance;
+    if (value === null || value === void 0 || value === "" || typeof value === "boolean") return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+  function describeDgScene(nodes) {
+    const candidates = nodes.filter((node) => node?.tableId != null && node?.gameInfo && (node?.betBtn || node?.betMoneyTmp));
+    return {
+      nodeCount: nodes.length,
+      candidateCount: candidates.length,
+      walletSynced: dgSceneWallet(findDgScenePlayer(nodes)) !== null,
+      candidates: candidates.slice(0, 60).map((node) => {
+        const missing = [
+          ["Banker", !!node.betBtn?.Banker],
+          ["Player", !!node.betBtn?.Player],
+          ["confirm", !!node.betMan?.confirm],
+          ["cancel", !!node.betMan?.cancel],
+          ["betMoneyTmp", !!node.betMoneyTmp],
+          ["betMoneyTrue", !!node.betMoneyTrue],
+          ["confirmBet", typeof node.confirmBet === "function"],
+          ["socket", typeof node.playerInfo?.socketMan?.sendData === "function"],
+          ["visible", dgSceneNodeVisible(node)]
+        ].filter(([, exists]) => !exists).map(([name]) => name);
+        return {
+          tableId: String(node.tableId),
+          table: String(node.gameInfo.tableName || ""),
+          gameState: Number(node.gameInfo.stateId),
+          roadCount: Array.isArray(node.gameInfo.roadArray) ? node.gameInfo.roadArray.length : 0,
+          hasGameNo: !!node.gameInfo.gameNo,
+          hasCountdown: node.gameInfo.countDown != null,
+          betFlag: node.betFlag === true,
+          missing
+        };
+      })
+    };
   }
 
   // lib/poker-strategies.ts
@@ -2213,6 +2268,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     let manualSelection = false;
     let selected = /* @__PURE__ */ new Set(), status = "\u505C\u6B62\uFF1A\u5148\u8B80\u53D6 DG \u55AE\u9801\u591A\u684C\u8CC7\u6599";
     let socket = null, account = null;
+    let walletPlayer = null;
     let nativeBetKey = "", originalSend = null, sendObserver = null;
     const owner = {}, logs = [], contexts = /* @__PURE__ */ new Map();
     let persistKey = "";
@@ -2360,8 +2416,8 @@ ${DG_MOBILE_LAYOUT_CSS}
       return b.playerInfo === account && b.playerInfo?.socketMan === socket && socket?.socket?.connected !== false;
     }
     function attach(all) {
-      const card = boards(all)[0];
-      const p = card?.playerInfo;
+      const p = findDgScenePlayer(all);
+      walletPlayer = p;
       if (!p?.socketMan?.on || !p?.socketMan?.off) return;
       if (account && p !== account) {
         stop("DG \u5DE5\u4F5C\u968E\u6BB5\u6539\u8B8A\uFF0C\u8ACB\u91CD\u65B0\u8F09\u5165\u8173\u672C");
@@ -2494,6 +2550,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       contexts.set(bet.key, card);
       const internalSide = side === "\u838A" ? "Banker" : "Player";
       function guard() {
+        if (window.__DG_MANUAL_CAPTURE_ACTIVE__) throw new Error("\u624B\u52D5\u6D41\u7A0B\u8A18\u9304\u4E2D\uFF0C\u5DE5\u5177\u4E0D\u9001\u55AE");
         if (!running || disposed || token !== epoch || document.hidden || String(card.gameInfo.gameNo) !== gameNo || !ready(card) || !sameSession(card)) throw new Error("\u5DF2\u505C\u6B62\u3001\u5C40\u865F\u6539\u8B8A\u6216\u505C\u6B62\u63A5\u53D7\u4E0B\u6CE8");
         const riskReason = riskStopReason(roundPnl(), riskLimits);
         if (riskReason) throw new Error(riskReason);
@@ -2544,6 +2601,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     async function tick() {
       if (disposed || busy) return;
+      if (window.__DG_MANUAL_CAPTURE_ACTIVE__ && running) stop("\u624B\u52D5\u6D41\u7A0B\u8A18\u9304\u4E2D\uFF0C\u5DE5\u5177\u5DF2\u505C\u6B62");
       const all = nodes();
       pokerTracker.observe(boards(all));
       attach(all);
@@ -2690,6 +2748,10 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
     }
     function start(testOnce = false) {
+      if (window.__DG_MANUAL_CAPTURE_ACTIVE__) {
+        log("\u624B\u52D5\u6D41\u7A0B\u8A18\u9304\u4E2D\uFF0C\u4E0D\u80FD\u958B\u555F\u81EA\u52D5\u4E0B\u6CE8");
+        return;
+      }
       if (busy) {
         log("\u4E0A\u4E00\u6D41\u7A0B\u5C1A\u672A\u9000\u51FA\uFF0C\u8ACB\u7A0D\u5019\u518D\u958B\u59CB");
         return;
@@ -2733,6 +2795,19 @@ ${DG_MOBILE_LAYOUT_CSS}
         return;
       }
       const nextStaking = stakingMode();
+      attach(nodes());
+      if (!boards().length) {
+        log("\u5C1A\u672A\u8FA8\u8B58\u539F\u751F\u591A\u684C\u5361\u7247\uFF0C\u6C92\u6709\u958B\u59CB\uFF1B\u8ACB\u532F\u51FA DG \u9023\u7DDA\u8A3A\u65B7");
+        return;
+      }
+      if (!socket || socket.socket?.connected === false) {
+        log("\u539F\u751F\u904A\u6232\u9023\u7DDA\u5C1A\u672A\u5C31\u7DD2\uFF0C\u6C92\u6709\u958B\u59CB");
+        return;
+      }
+      if (dgSceneWallet(walletPlayer) === null) {
+        log("\u539F\u751F\u9918\u984D\u5C1A\u672A\u540C\u6B65\uFF0C\u6C92\u6709\u958B\u59CB");
+        return;
+      }
       if (ledger.pending().length && nextStaking !== stakingMode()) {
         log("\u7B49\u5F85\u4E0B\u6CE8\u7D50\u7B97\u5F8C\u624D\u80FD\u8B8A\u66F4\u914D\u6CE8\u65B9\u5F0F");
         return;
@@ -2821,9 +2896,10 @@ ${DG_MOBILE_LAYOUT_CSS}
       const pnl = settled.reduce((sum, b) => sum + (b.pnl ?? 0), 0);
       const wins = settled.filter((b) => (b.pnl ?? 0) > 0).length, losses = settled.filter((b) => (b.pnl ?? 0) < 0).length, ties = settled.length - wins - losses;
       q("brand-count").textContent = "\u767E\u5BB6\u5DE5\u7A0B\u5E2B";
-      q("balance").textContent = account && Number.isFinite(Number(account.balance)) ? money(Number(account.balance)) : "\u2014";
+      const wallet = dgSceneWallet(walletPlayer);
+      q("balance").textContent = wallet === null ? "\u5F85\u540C\u6B65" : money(wallet);
       q("mini-balance").textContent = q("balance").textContent;
-      q("mini-running").textContent = `${running ? "\u57F7\u884C\u4E2D" : pending.length ? "\u5F85\u7D50\u7B97" : "\u5DF2\u505C\u6B62"} \xB7 ${mini ? selected.size + "\u684C" : manualSelection ? "\u6307\u5B9A\u684C" : "\u81EA\u52D5\u627E\u684C"}`;
+      q("mini-running").textContent = `${running ? selected.size ? "\u57F7\u884C\u4E2D" : "\u7B49\u5F85\u958B\u76E4" : pending.length ? "\u5F85\u7D50\u7B97" : "\u5DF2\u505C\u6B62"} \xB7 ${mini ? selected.size + "\u684C" : manualSelection ? "\u6307\u5B9A\u684C" : "\u81EA\u52D5\u627E\u684C"}`;
       q("auto-tables").disabled = selectionLocked();
       q("auto-tables").classList.toggle("selected", !manualSelection);
       q("auto-tables").textContent = manualSelection ? "\u5207\u56DE\u81EA\u52D5\u627E\u684C" : "\u81EA\u52D5\u627E\u684C\u4E2D";
@@ -2866,6 +2942,10 @@ ${DG_MOBILE_LAYOUT_CSS}
       if (currentBet) {
         const original = AI_PROVIDER_OPTIONS.find((x) => x.key === currentBet.provider)?.label;
         q("focus-meta").textContent += original && original !== strategyLabel ? `\uFF5C\u6B64\u55AE ${original}` : "";
+      }
+      if (!focus && !currentBet) {
+        q("focus-phase").textContent = cards.length ? "\u7B49\u5F85\u958B\u76E4" : "\u684C\u5361\u672A\u63A5\u901A";
+        q("focus-meta").textContent = cards.length ? `\u5DF2\u8FA8\u8B58 ${cards.length} \u684C\uFF1B\u7B49\u5F85\u958B\u76E4\u3001\u8DB3\u5920\u5012\u6578\u8207\u724C\u8DEF` : "\u5C1A\u672A\u8FA8\u8B58\u539F\u751F\u684C\u5361\uFF0C\u672A\u9001\u55AE\uFF1B\u8ACB\u532F\u51FA\u9023\u7DDA\u8A3A\u65B7";
       }
       const stage = currentBet ? currentBet.state === "accepted" ? 3 : 2 : running ? 1 : 0;
       for (let i = 1; i <= 4; i++) q("step-" + i).classList.toggle("active", i <= stage);
@@ -3264,6 +3344,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       officialTurnover: official.view,
       refreshOfficialTurnover: () => official.refresh(true),
       mobileDiagnostics: () => inspectDgMobileNativeSurface(window),
+      runtimeDiagnostics: () => describeDgScene(nodes()),
       exportMobilePublicSources: () => exportDgMobileLoadedPublicScripts(document),
       status: () => ({ running, status, mini, base, startMode, selectionMode: manualSelection ? "manual" : "auto", panelSize: { width: panelWidth, height: panelHeight }, pending: ledger.pending().map((b) => ({ ...b })), selected: [...selected], roomCount, scope, staking: stakingMode(), riskLimits: { ...riskLimits }, roundPnl: roundPnl(), unacknowledgedFunds: unacknowledgedFunds() }),
       rounds: () => boards().filter((c) => selected.has(String(c.tableId))).map((c) => ({ table: c.gameInfo.tableName, round: c.gameInfo.playId, ...currentRoundState(c) })),

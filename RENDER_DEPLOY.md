@@ -1,3 +1,9 @@
+# DG 手機流程診斷更新 v3.2.1
+
+本包為診斷版：請先閱讀 [DG-MOBILE-DIAGNOSTIC.md](./DG-MOBILE-DIAGNOSTIC.md)，部署後版本應為 `3.2.1-diagnostic`。不代表已修好手機自動下注或 MT 代理限制。保留原白名單／資料庫，沿用下列Docker設定；舊v3.2說明僅供既有基準參考。
+
+---
+
 # AutoBac DG／MT v3.2：部署後自行登入
 
 完整步驟、本次修正及驗證限制請看 [AUTOBAC-V3.2-DEPLOY.md](./AUTOBAC-V3.2-DEPLOY.md)。

@@ -15,12 +15,12 @@ root_files = {
     '.dockerignore', '.gitignore', 'Dockerfile', 'package.json', 'pnpm-lock.yaml',
     'app.config.ts', 'app.config.js', 'babel.config.js', 'metro.config.js',
     'tsconfig.json', 'start-production.sh', 'AUTOBAC-V3-DEPLOY.md',
-    'RENDER_DEPLOY.md', 'AUTOBAC-DEPLOY.md', 'AUTOBAC-V3.1-DEPLOY.md', 'AUTOBAC-V3.2-DEPLOY.md', 'LICENSE', 'README.md',
+    'DG-MOBILE-DIAGNOSTIC.md', 'RENDER_DEPLOY.md', 'AUTOBAC-DEPLOY.md', 'AUTOBAC-V3.1-DEPLOY.md', 'AUTOBAC-V3.2-DEPLOY.md', 'LICENSE', 'README.md',
     'tailwind.config.js', 'theme.config.js', 'theme.config.d.ts', 'global.css',
     'nativewind-env.d.ts', 'expo-env.d.ts', 'drizzle.config.ts', 'eslint.config.js',
 }
 source_dirs = {'app', 'components', 'lib', 'server', 'shared', 'constants', 'hooks', 'scripts', 'drizzle'}
-validated_tests = {'poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
+validated_tests = {'dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
 source_extensions = {'.ts', '.tsx', '.js', '.cjs', '.mjs', '.css', '.sql', '.md', '.py', '.sh'}
 required_source_data = {'lib/sa-table-labels.json'}
 asset_dirs = {'assets', 'public'}
@@ -75,7 +75,7 @@ required = [
     'tailwind.config.js', 'theme.config.js', 'global.css', 'lib/sa-table-labels.json',
     'components/autobac-access.tsx', 'components/autobac-platform-choice.tsx',
     'lib/legacy-platform-screen.tsx', 'lib/dg-frame-installer.ts', 'lib/mt-frame-installer.ts',
-    'lib/dg-console-entry.ts', 'lib/mt-click-console-entry.ts',
+    'lib/dg-console-entry.ts', 'lib/dg-operation-capture.ts', 'DG-MOBILE-DIAGNOSTIC.md', 'lib/mt-click-console-entry.ts',
     'lib/dg-official-turnover.ts', 'lib/mt-official-turnover.ts',
     'scripts/mt-diagnostic-base.js', 'scripts/build-dg-console.cjs',
     'scripts/build-mt-click-console.cjs', 'server/_core/index.ts',
@@ -89,7 +89,7 @@ for name in required:
 package = json.loads(entries['package.json'])
 if 'build:dg' not in package['scripts']['build'] or 'build:mt' not in package['scripts']['build']:
     raise SystemExit('Production build must include both platform engines')
-manifest = {'version': 'AutoBac-3.2', 'files': {name: hashlib.sha256(data).hexdigest() for name, data in sorted(entries.items())}}
+manifest = {'version': 'AutoBac-3.2.1-diagnostic', 'files': {name: hashlib.sha256(data).hexdigest() for name, data in sorted(entries.items())}}
 entries['AUTOBAC-MANIFEST.json'] = (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()
 args.output.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(args.output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:

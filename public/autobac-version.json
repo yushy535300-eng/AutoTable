@@ -1,9 +1,12 @@
 {
-  "version": "3.2",
-  "release": "integrated-mobile-turnover-fixes",
+  "version": "3.2.1-diagnostic",
+  "release": "dg-manual-mobile-flow-capture",
   "releaseDate": "2026-10-14",
-  "platforms": ["DG", "MT"],
+  "platforms": [
+    "DG",
+    "MT"
+  ],
   "strategyMenuCount": 8,
   "initialState": "stopped",
-  "verification": "offline-regression; live-device-validation-required"
+  "verification": "diagnostic-only; live-DG-mobile-auto-bet-unverified"
 }

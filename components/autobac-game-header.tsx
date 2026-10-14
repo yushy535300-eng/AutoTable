@@ -5,9 +5,9 @@ import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { AUTOBAC_BRAND as brand, openBrandLink } from '@/lib/autobac-brand';
 import type { GamePlatform } from './autobac-platform-choice';
 
-type HeaderProps = { platform: GamePlatform; installed: boolean; disabled?: boolean; onReconnect: () => void; onLogout: () => void; onSelectPlatform: () => void };
+type HeaderProps = { platform: GamePlatform; installed: boolean; disabled?: boolean; onReconnect: () => void; onLogout: () => void; onSelectPlatform: () => void; onDiagnostics?: () => void; onRecord?: () => void; recording?: boolean };
 
-export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, onLogout, onSelectPlatform }: HeaderProps) {
+export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, onLogout, onSelectPlatform, onDiagnostics, onRecord, recording }: HeaderProps) {
   const { width } = useWindowDimensions();
   const [collapsed, setCollapsed] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -33,6 +33,8 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
         <HeaderButton testID="header-help" label="說明" icon="help-outline" onPress={() => setHelpOpen(true)} />
         <HeaderButton testID="header-platform" label="平台" icon="apps" disabled={disabled} onPress={onSelectPlatform} />
         <HeaderButton testID="header-reconnect" label="重連" icon="sync" disabled={disabled} onPress={onReconnect} />
+        {onDiagnostics ? <HeaderButton testID="header-diagnostics" label="診斷" icon="download" onPress={onDiagnostics} /> : null}
+        {onRecord ? <HeaderButton testID="header-record" label={recording?'結束記錄':'記錄流程'} icon={recording?'save-alt':'radio-button-checked'} disabled={disabled&&!recording} onPress={onRecord} /> : null}
         <HeaderButton testID="header-logout" label="登出" icon="logout" onPress={onLogout} />
         {!small ? <Pressable testID="header-collapse" accessibilityRole="button" accessibilityLabel="收起頂部資訊" style={s.collapse} onPress={() => setCollapsed(true)}><MaterialIcons name="remove" size={18} color="#d2c9b0" /></Pressable> : null}
       </View> : null}
@@ -42,8 +44,8 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
         <View accessibilityViewIsModal testID="autobac-help" style={s.helpCard}>
           <View style={s.helpTop}><View><Text style={s.helpEyebrow}>AUTOBAC GUIDE</Text><Text style={s.helpTitle}>自動下注使用說明</Text></View><Pressable accessibilityRole="button" accessibilityLabel="關閉使用說明" onPress={() => setHelpOpen(false)} style={s.close}><MaterialIcons name="close" size={21} color="#ccceb9" /></Pressable></View>
           <ScrollView style={{ maxHeight: 420 }}>
-            <HelpSection number="01" title="登入後，先設定" text="登入成功後選擇 MT 或 DG。DG 的 AutoBac 面板初始停止，開啟多桌画面後再設定策略與金額。MT 目前使用原生畫面，自動面板尚未接通。" />
-            <HelpSection number="02" title="配注與桌數" text="DG：1 桌可以選馬丁或平注；3 桌、5 桌及所有桌固定平注，不能改成馬丁。單桌馬丁跨房間沿用配注鏈，和局不升階。" />
+            <HelpSection number="01" title="登入後，先設定" text="登入成功後選擇 MT 或 DG。面板初始停止；須確認原生遊戲、桌卡、餘額與策略資料已接通，再設定策略與金額。面板出現不代表已送單成功；未就緒時可按頂部診斷匯出安全資料。" />
+            <HelpSection number="02" title="配注與桌數" text="兩平台單桌可以選平注、馬丁或倍投；3 桌、5 桌及所有已載入桌固定平注。單桌升階必須等正式結算，和局不升階。" />
             <HelpSection number="03" title="你確認後，才開始" text="點開始並完成風險確認後才自動下注。停止只停止新增下注，不會取消平台已接受的注單；送出後請核對接受狀態與正式結算。" />
             <HelpSection number="04" title="紀錄與風控" text="可在面板查看下注紀錄、結算與損益，設定止盈止損。小窗、迷你模式和頂部資訊收合只是顯示切換，不會重新登入或重載 DG。" />
             <View style={s.warning}><Text style={s.warningText}>自動下注不保證獲利；策略名稱使用原本地分析邏輯，不代表已呼叫外部 AI。所有操作風險由使用者自行評估與承擔。</Text></View>

@@ -6,6 +6,7 @@ import { detectGameDevice, resolveGameDevice, type GameDevice } from '@/lib/game
 import { ensureDgMultiHall } from '@/lib/dg-auto-multihall';
 import { AutoBacGameHeader } from '@/components/autobac-game-header';
 import { AutoBacPlatformChoice, type GamePlatform } from '@/components/autobac-platform-choice';
+import { createDgOperationCapture, captureDgViewport } from '@/lib/dg-operation-capture';
 import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources } from '@/lib/dg-frame-installer';
 import { enterMtForeground, installMtFramePanel, ensureMtMultiplePage, mtFrameAccessBlocked, mtFrameHasPending, mtFramePanelStatus, preserveMtFrameLedger, stopMtFramePanel } from '@/lib/mt-frame-installer';
 
@@ -25,6 +26,10 @@ export default function AutoBacScreen() {
   const [installed, setInstalled] = useState(false);
   const [mtAccessBlocked, setMtAccessBlocked] = useState(false);
   const [authInvalid, setAuthInvalid] = useState(false);
+  const [captureRunning, setCaptureRunning] = useState(false);
+  const [captureExpanded, setCaptureExpanded] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState<ReturnType<ReturnType<typeof createDgOperationCapture>['status']> | null>(null);
+  const captureRef = useRef<ReturnType<typeof createDgOperationCapture> | null>(null);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const nativeMtLaunch = useRef('');
   const launchCache = useRef(new Map<string, { sessionId: string; promise: Promise<string> }>());
@@ -63,6 +68,7 @@ export default function AutoBacScreen() {
   useEffect(() => { if (auth && selected) void launch(auth, selected, gameDevice); }, [auth, selected, gameDevice, launch]);
 
   function resetForeground() {
+    captureRef.current?.stop(); captureRef.current = null; setCaptureRunning(false);
     generation.current++; launchBusy.current = false;
     setSelected(null); setGameUrl(''); setInstalled(false); setError(''); setDeparture(null); setMtAccessBlocked(false); nativeMtLaunch.current = '';
   }
@@ -86,6 +92,7 @@ export default function AutoBacScreen() {
     if (auth && check.data?.valid === false) {
       setAuthInvalid(true);
       setError('登入授權已失效，已停止新增操作；先核對現有注單，再重新登入。');
+      captureRef.current?.stop(); setCaptureRunning(false);
       stopAndPreserve();
       setDeparture('logout');
     }
@@ -99,6 +106,7 @@ export default function AutoBacScreen() {
       const frame = frameRef.current;
       if (!frame) return;
       if (authInvalid) { stopDgFramePanel(frame); preserveDgFrameLedger(frame); return; }
+      if (captureRunning) { stopDgFramePanel(frame); return; }
       // The compatible panel can display stopped/waiting state before MultiLobby
       // finishes loading. Do not make its visibility depend on a hall click.
       if (mode === 'desktop') {
@@ -116,7 +124,7 @@ export default function AutoBacScreen() {
         return;
       }
       const existing = dgFramePanelStatus(frame); preserveDgFrameLedger(frame);
-      if (existing.installed) { setInstalled(true); setError(''); setMessage(existing.connected ? '百家工程師已連線' : '面板已載入，請在 DG 顯示多桌畫面'); return; }
+      if (existing.installed) { setInstalled(true); setError(''); setMessage(existing.connected ? (frame.contentWindow?.__DG_SINGLEPAGE__?.status?.().running ? '百家工程師執行中；請核對正式接受與結算' : '面板已接上桌卡；自動下注已停止，不會自行恢復') : '面板已載入，但原生桌卡尚未接通；未送單'); return; }
       const outcome = installDgFramePanel(frame, mode);
       if (outcome === 'installed') { setInstalled(true); setError(''); return; }
       if (++attempts < 4) return;
@@ -126,7 +134,7 @@ export default function AutoBacScreen() {
     };
     tick(); const timer = setInterval(tick, 1000);
     return () => { clearInterval(timer); stopDgFramePanel(frameRef.current); };
-  }, [auth, gameUrl, authInvalid, selected, gameDevice]);
+  }, [auth, gameUrl, authInvalid, selected, gameDevice, captureRunning]);
 
   useEffect(() => {
     if (!auth || !gameUrl || selected !== 'MT') return;
@@ -164,6 +172,13 @@ export default function AutoBacScreen() {
     return () => { cancelled = true; clearInterval(timer); stopAndPreserve(); };
   }, [auth, gameUrl, authInvalid, selected]);
 
+  useEffect(() => {
+    if(!captureRunning)return;
+    const refresh=()=>setCaptureStatus(captureRef.current?.status()||null);
+    refresh();const timer=setInterval(refresh,500);
+    return()=>clearInterval(timer);
+  },[captureRunning]);
+
   useEffect(()=>{
     if(Platform.OS!=='web'||!gameUrl)return;
     const leaving=(event:BeforeUnloadEvent)=>{
@@ -177,6 +192,7 @@ export default function AutoBacScreen() {
 
   function retry() {
     if (!auth || !selected || authInvalid) return;
+    if(captureRunning){setError('請先按「結束記錄」下載流程檔，再重新載入遊戲。');return;}
     stopAndPreserve();
     if (gameUrl && ((selected === 'DG' && dgFrameHasPending(frameRef.current)) || (selected === 'MT' && mtFrameHasPending(frameRef.current)))) { setDeparture('retry'); return; }
     setDeparture(null);
@@ -185,6 +201,7 @@ export default function AutoBacScreen() {
   }
   function choosePlatform() {
     if (authInvalid) return;
+    if(captureRunning){setError('請先按「結束記錄」下載流程檔，再切換平台。');return;}
     stopAndPreserve();
     if (gameUrl && ((selected === 'DG' && dgFrameHasPending(frameRef.current)) || (selected === 'MT' && mtFrameHasPending(frameRef.current)))) { setDeparture('choose'); return; }
     resetForeground();
@@ -199,6 +216,24 @@ export default function AutoBacScreen() {
     setGameDevice(device); setSelected(target); setDeparture(null);
   } }} onLogout={() => signOut()} />;
 
+  function recordManualFlow() {
+    if(captureRunning){
+      const recorder=captureRef.current;recorder?.stop();
+      try {
+        if(recorder){const blob=new Blob([JSON.stringify(recorder.report(),null,2)],{type:'application/json'});
+          const url=URL.createObjectURL(blob),node=document.createElement('a');node.href=url;node.download='AutoBac-DG-manual-flow.json';node.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+        setCaptureRunning(false);setMessage('記錄已結束；自動下注仍已停止，不會自動恢復。');
+      } catch { setError('記錄已停止，但下載未完成；已保留資料，請再按「結束記錄」重試。'); }
+      return;
+    }
+    try {
+      const frame=frameRef.current;
+      if(!frame?.contentDocument||frame.contentDocument.location.origin!==window.location.origin){setError('遊戲入口尚未可讀，不能開始流程記錄。');return;}
+      stopAndPreserve();
+      captureRef.current?.stop();captureRef.current=createDgOperationCapture(frame.contentWindow,window);
+      setCaptureStatus(captureRef.current.status());setCaptureExpanded(false);setCaptureRunning(true);setError('');
+    } catch { captureRef.current?.stop();setCaptureRunning(false);setError('DG 記錄器未能掛上原生事件，沒有自動操作；請按「診斷」匯出當前狀態。'); }
+  }
   function exportMobileSourceList() {
     const data = exportDgFrameMobilePublicSources(frameRef.current);
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
@@ -215,7 +250,8 @@ export default function AutoBacScreen() {
         if (selected === 'DG') runtime = {
           laya: !!W.Laya?.stage, mobile: W.__DG_SINGLEPAGE__?.mobileDiagnostics?.(),
           tables: W.__DG_SINGLEPAGE__?.diagnostics?.() || [],
-          state: W.__DG_SINGLEPAGE__?.status?.().status || '等待面板',
+          state: W.__DG_SINGLEPAGE__?.status?.().running ? 'running' : 'stopped',
+          surface: W.__DG_SINGLEPAGE__?.runtimeDiagnostics?.() || null,
           scripts: exportDgFrameMobilePublicSources(frame).scripts,
         };
         else { const report = W.__MT_AUTOBAC_DIAG__?.report?.(); runtime = {
@@ -226,7 +262,7 @@ export default function AutoBacScreen() {
         }; }
       }
     } catch { /* keep a credential-free inaccessible status */ }
-    const data = {version: '3.2-mobile-runtime', platform: selected, requestedDevice: gameDevice, hasError: !!error, errorCode: error.match(/session_invalid|foreground_origin_required|invalid_mt_launch|entry_response_invalid/)?.[0] || null, runtime};
+    const data = {version: '3.2.1-mobile-capture', platform: selected, requestedDevice: gameDevice, outerViewport:captureDgViewport(window), hasError: !!error, errorCode: error.match(/session_invalid|foreground_origin_required|invalid_mt_launch|entry_response_invalid/)?.[0] || null, runtime};
     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob), node = document.createElement('a');
     node.href = url; node.download = `AutoBac-${selected}-connection-diagnostic.json`; node.click();
@@ -234,15 +270,30 @@ export default function AutoBacScreen() {
   }
   const mt = selected === 'MT';
   return <View style={s.page}>
-    <AutoBacGameHeader platform={selected} installed={installed} disabled={authInvalid} onReconnect={() => retry()} onLogout={() => signOut()} onSelectPlatform={() => choosePlatform()} />
+    <AutoBacGameHeader platform={selected} installed={installed} disabled={authInvalid} onReconnect={() => retry()} onLogout={() => {captureRef.current?.stop();setCaptureRunning(false);signOut();}} onSelectPlatform={() => choosePlatform()} onDiagnostics={exportConnectionDiagnosis} onRecord={selected==='DG'?recordManualFlow:undefined} recording={captureRunning} />
     <View style={s.game}>
       {gameUrl && Platform.OS === 'web' ? createElement('iframe', {
         key: selected,
         ref: (node: HTMLIFrameElement | null) => { frameRef.current = node; }, src: gameUrl,
         title: `${selected} 真人遊戲`, referrerPolicy: 'no-referrer', allow: 'clipboard-read; clipboard-write; fullscreen; autoplay',
         style: { width: '100%', height: '100%', border: 0, background: '#000' },
-        onLoad: () => { if (!mt && frameRef.current) ensureDgMultiHall(frameRef.current, /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop'); },
+        onLoad: () => { if (!mt && frameRef.current&&!captureRunning) ensureDgMultiHall(frameRef.current, /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop'); },
       }) : <View style={s.loading}><View style={s.loadingMark}><Text style={s.loadingLetter}>{selected}</Text></View><Text style={s.loadingTitle}>正在進入 {selected}</Text><Text style={s.loadingText}>{message}</Text></View>}
+      {captureRunning?<View testID="dg-live-diagnostics" style={s.captureBox}>
+        <View style={s.captureHeading}><Text style={s.captureTitle}>{captureStatus?.recording?'DG 即時診斷':'記錄已停止'} · {captureStatus?.elapsedSeconds||0}秒</Text><Pressable onPress={()=>setCaptureExpanded(value=>!value)}><Text style={s.toolText}>{captureExpanded?'收合':'詳情'}</Text></Pressable></View>
+        <Text style={s.captureText}>連線 {captureStatus?.socketDetected?'已偵測':'未偵測'} · 餘額 {captureStatus?.wallet===null||captureStatus?.wallet===undefined?'待同步':captureStatus.wallet.toLocaleString('zh-TW')}</Text>
+        <Text style={s.captureText}>桌卡 {captureStatus?.completeCards||0}/{captureStatus?.cardCandidates||0} · 送出 {captureStatus?.sent||0} · 接受 {captureStatus?.accepted||0} · 結算 {captureStatus?.settled||0}</Text>
+        {captureExpanded?<View style={{gap:4}}>
+          <Text style={s.captureText}>籌碼值：{captureStatus?.selectedChip===null||captureStatus?.selectedChip===undefined?'未偵測':captureStatus.selectedChip.toLocaleString('zh-TW')}</Text>
+          <Text style={s.captureText}>方向點擊：{captureStatus?.directionClick?'已偵測':'未偵測'} · 確認點擊：{captureStatus?.confirmClick?'已偵測':'未偵測'}</Text>
+          <Text style={s.captureText}>原生送出：{captureStatus?.sent?'已偵測':'未偵測'} · 平台接受：{captureStatus?.accepted?'已偵測匹配回覆':'未偵測'}</Text>
+          <Text style={s.captureText}>正式結算：{captureStatus?.settled?'已偵測匹配回覆':'未偵測'}</Text>
+          <Text style={s.captureText}>桌卡缺欄位：{captureStatus?.missing.length?captureStatus.missing.join(' / '):captureStatus?.cardCandidates?'未缺欄位（非下注成功）':'尚無桌卡候選'}</Text>
+          <Text style={s.captureNote}>確認點擊不是下注成功；僅顯示同桌同局的原生接受與結算回覆。若點擊未識別仍會記錄未知控制項。</Text>
+        </View>:null}
+        <Text style={s.captureNote}>只讀記錄 · 工具自動下注已停止</Text>
+        <Pressable onPress={recordManualFlow} style={s.retry}><Text style={s.toolText}>結束記錄並下載</Text></Pressable>
+      </View>:null}
       {mt && gameUrl && !mtAccessBlocked ? <View testID="mt-native-status" style={s.mtStatus}><Text style={s.mtStatusText}>{installed ? 'MT 同源原生入口 · 完整面板已接通' : 'MT 同源原生入口 · 等待完整面板'}</Text></View> : null}
       {selected === 'DG' && !installed && gameUrl ? <View testID="dg-install-status" style={s.mtStatus}><Text style={s.mtStatusText}>{message || 'DG 遊戲引擎載入中 · 尚未啟用自動操作'}</Text>{/^\/ddnewwap\//.test(gameUrl) ? <Pressable onPress={exportMobileSourceList}><Text style={s.toolText}>匯出 DG 手機腳本清單（不含憑證）</Text></Pressable> : null}</View> : null}
       {error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text><View style={{gap: 6}}><Pressable onPress={() => retry()} disabled={authInvalid} style={s.retry}><Text style={s.toolText}>重試</Text></Pressable>{mtAccessBlocked && nativeMtLaunch.current ? <Pressable onPress={() => {
@@ -272,5 +323,8 @@ const s = StyleSheet.create({
   errorBox: { position: 'absolute', top: 12, left: 12, right: 12, padding: 14, backgroundColor: '#3d252b', borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   pendingBox: { position: 'absolute', left: 14, right: 14, bottom: 18, padding: 16, backgroundColor: '#243630', borderWidth: 1, borderColor: '#547267', borderRadius: 12, gap: 12 },
   errorText: { color: '#f0e9e1', fontSize: 12, lineHeight: 19, flexShrink: 1 }, retry: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 6, backgroundColor: '#4d6658' }, toolText: { color: '#d4e5df', fontSize: 11, fontWeight: '600' },
+  captureBox: { position:'absolute',left:10,bottom:82,width:245,maxWidth:'90%',padding:10,gap:5,backgroundColor:'#152a2a',borderColor:'#73958c',borderWidth:1,borderRadius:9 },
+  captureHeading: { flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8 },
+  captureTitle: { color:'#e2eee7',fontSize:11,fontWeight:'700' },captureText: { color:'#d1e6da',fontSize:10,lineHeight:15 },captureNote: { color:'#a7bdb0',fontSize:9,lineHeight:13 },
   mtStatus: { position: 'absolute', left: 10, bottom: 10, padding: 9, borderRadius: 7, backgroundColor: '#28372c' }, mtStatusText: { color: '#c9d2c0', fontSize: 10 },
 });
