@@ -12,7 +12,7 @@ import {installDgPanelResize} from './dg-panel-resize';
 import {installDgProviderMenu} from './dg-provider-menu';
 import {createDgOfficialTurnover} from './dg-official-turnover';
 import {renderOfficialTurnover} from './official-turnover-panel';
-import {inspectDgMobileNativeSurface} from './dg-mobile-native';
+import {inspectDgMobileNativeSurface,isDgMultiLobbyCard,getDgBetControls,dgNativeBetEnabled,hasDgVerifiedMobilePacketBuilder} from './dg-mobile-native';
 import {exportDgMobileLoadedPublicScripts} from './dg-mobile-public-source';
 
 declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_STATE__?:any;}}
@@ -75,6 +75,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const limit=checkDgAmount(card,stakeAmount(id));if(!limit.ok)return {label:userStatus(limit.reason),ok:false};
     if(Number(card.gameInfo?.stateId)!==1)return {label:'本局已封盤／未開放',ok:false};
     if(remaining(card)<minSeconds)return {label:'剩餘時間不足，未下注',ok:false};
+    if(!dgNativeBetEnabled(card))return {label:'原生確認尚在鎖定，未下注',ok:false};
     const decision=strategyFor(card);if(!decision.side)return {label:decision.reason||'策略資料不足，未下注',ok:false};
     return {label:tableWait.get(id)?userStatus(tableWait.get(id)!):running?'準備送出':'已停止',ok:false};
   }
@@ -99,12 +100,10 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   function boards(all=nodes()){
     const unique=new Map<string,any>();
     for(const n of all){
-      // Only the evidenced single-page MultiLobby/GoodRoad betting cards.
-      // Single-room video views (betBtnMan/enterGame only) are deliberately excluded.
-      // Keep the proven PC MultiLobby predicate unchanged. Mobile installation
-      // is gated in dg-frame-installer before this console is injected; once
-      // installed, this continues to use no DOM/touch coordinate.
-      if(n.tableId&&n.gameInfo&&n.betBtn?.Banker&&n.betBtn?.Player&&n.betMan?.confirm&&n.betMan?.cancel&&n.betMoneyTmp&&n.betMoneyTrue&&visible(n)){
+      // The real mobile V3.2.9 cards own betBtnMan, not PC betMan.
+      // Mobile is supported only for the exact evidenced native builders;
+      // single-room or unknown mobile packet builders remain excluded.
+      if(isDgMultiLobbyCard(n)&&visible(n)&&(getDgBetControls(n)?.profile!=='mobile-v329'||hasDgVerifiedMobilePacketBuilder(n))){
         const k=String(n.tableId);if(!unique.has(k))unique.set(k,n);
       }
     }
@@ -117,11 +116,11 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       const now=L.Browser?.now?.()??Date.now();
       result-=Math.max(0,(now-Number(info.starTime))/1000);
     }
-    const text=String(n.countDownMan?.text??'').trim();
+    const text=String(n.countDownMan?.countDown??n.countDownMan?.text??'').trim();
     if(/^\d+$/.test(text))result=Math.min(result,Number(text));
     return Number.isFinite(result)?Math.max(0,result):0;
   }
-  function ready(n:any){return visible(n)&&Number(n.gameInfo?.stateId)===1&&remaining(n)>=minSeconds&&n.betFlag===true&&visible(n.betBtn?.Banker)&&visible(n.betBtn?.Player)&&n.betBtn.Banker.mouseEnabled!==false&&n.betBtn.Player.mouseEnabled!==false;}
+  function ready(n:any){return visible(n)&&Number(n.gameInfo?.stateId)===1&&remaining(n)>=minSeconds&&dgNativeBetEnabled(n)&&visible(n.betBtn?.Banker)&&visible(n.betBtn?.Player)&&n.betBtn.Banker.mouseEnabled!==false&&n.betBtn.Player.mouseEnabled!==false;}
   function roads(n:any):Array<'莊'|'閒'|'和'>{
     // bundle showAllRoad walks roadArray from length-1 down to 0: newest first in memory.
     if(!Array.isArray(n.gameInfo.roadArray))return [];
@@ -164,7 +163,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
         const key=`${msg.tableId}:${msg.gameNo}`;
         const bet=ledger.pending().find(b=>b.key===key);
         if(bet&&nativeBetKey!==key){
-          bet.state='uncertain';persist();stop('偵測同局額外下注；本筆損益不能單獨核對，停止馬丁推進');
+          bet.attributionUncertain=true;bet.state='uncertain';persist();stop('偵測同局額外下注；本筆損益不能單獨核對，停止配注推進');
         }
       }
       return originalSend.call(this,msg,...args);
@@ -240,6 +239,13 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       const detached=Object.create(card);
       detached.betMoneyTmp=Object.fromEntries(Object.keys(card.betMoneyTmp).map(k=>[k,k===internalSide?amount:0]));
       detached.betMoneyTrue=Object.fromEntries(Object.keys(card.betMoneyTrue).map(k=>[k,0]));
+      // Mobile confirmBet calls hideHover and updates betBtnMan state. Both
+      // writes are isolated; never hide/mutate the user's real UI controls.
+      if(getDgBetControls(card)?.profile==='mobile-v329'){
+        if(!hasDgVerifiedMobilePacketBuilder(card))throw new Error('手機原生builder版本未核對，沒有傳送');
+        detached.betBtn=Object.fromEntries(Object.entries(card.betBtn).map(([key,value])=>[key,Object.assign(Object.create(value as object),{hideHover:()=>{}})]));
+        detached.betBtnMan=Object.assign(Object.create(card.betBtnMan),{betFlag:true,visible:false});
+      }
       detached.betFlag=true;
       detached.showBetMan=()=>{};
       detached.showBetFailed=()=>{throw new Error('DG 原生驗證／封包建構失敗');};
@@ -653,7 +659,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   document.addEventListener('visibilitychange',visibility);
   const timer=setInterval(()=>void tick(),500);
   window.__DG_SINGLEPAGE__={
-    version:'2.8.7-mobile-evidence-gate',start:()=>requestStart(),stop,scan,
+    version:'3.2.2-mobile-v329-native',start:()=>requestStart(),stop,scan,
     stakeDiagnostics,officialTurnover:official.view,refreshOfficialTurnover:()=>official.refresh(true),
     mobileDiagnostics:()=>inspectDgMobileNativeSurface(window),
     runtimeDiagnostics:()=>describeDgScene(nodes()),

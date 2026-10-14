@@ -30,18 +30,39 @@ export function ensureDgMultiHall(frame: DgFrame | null, mode: DgMultiHallMode =
   } catch { return 'cross-origin'; }
   const stage = win?.Laya?.stage;
   if (!stage?.getChildAt) return 'waiting';
-  if (mode === 'mobile') {
-    // There is no supplied mobile navigation source that proves a mobile tab's
-    // click handler. A Mobile launch therefore never reuses the desktop
-    // classicBtnArr/hotBtnArr click. It becomes ready only after the live Laya
-    // scene proves it has the same MultiLobby packet-builder card.
-    const mobile = inspectDgMobileNativeSurface(win);
-    if (mobile.readiness === 'compatible') return 'ready';
-    if (mobile.readiness === 'unverified-packet-builder') return 'unavailable';
-    return 'waiting';
-  }
+  if(win.__DG_MANUAL_CAPTURE_ACTIVE__)return 'waiting';
   let navigation = states.get(doc);
   if (!navigation) { navigation = { started: Date.now(), requested: false }; states.set(doc, navigation); }
+  if (mode === 'mobile') {
+    const mobile = inspectDgMobileNativeSurface(win);
+    if (mobile.readiness === 'compatible') {navigation.completed=true;return 'ready';}
+    if (mobile.readiness === 'unverified-packet-builder') return 'unavailable';
+    if(navigation.completed)return 'finished';
+    if(navigation.failed||Date.now()-navigation.started>90000)return 'unavailable';
+    if(navigation.requested){
+      if(Date.now()-(navigation.requestedAt||0)>25000){navigation.failed=true;return 'unavailable';}
+      return 'requested';
+    }
+    // Exact public mobile V3.2.9 source from the user's actual loaded scripts.
+    // Never substitute PC gameLeftMan or a Multi-card enterGame control.
+    const scripts=Array.from(doc.scripts||[]) as HTMLScriptElement[];
+    if(!scripts.some(script=>{try{return new URL(script.src,doc.location.href).pathname==='/ddnewwap/V3.2.9/js/bundle.js';}catch{return false;}}))return 'waiting';
+    const nodes=readDgSceneNodes(stage);
+    if(nodes.some(node=>dgSceneNodeVisible(node)&&(node.viewName==='Game'||node.currentView?.viewName==='Game')))return 'waiting';
+    const lobby=nodes.find(node=>node.viewName==='Lobby'&&node.playerInfo&&dgSceneNodeVisible(node));
+    if(!lobby)return 'waiting';
+    const layout=lobby.playerInfo.layoutType;
+    const menu=layout==='Hot'?lobby.selectGameMenu:layout==='Class'?lobby.selectLobbyMan:null;
+    if(!menu||menu.playerInfo!==lobby.playerInfo||!dgSceneNodeVisible(menu)||!menu.gameCacheMC)return 'waiting';
+    const buttons=layout==='Hot'?menu.gameArray:menu.lobbyArray;
+    if(!Array.isArray(buttons))return 'waiting';
+    const candidates=buttons.filter(button=>button.buttonName==='Mulit'&&(layout==='Hot'?Number(button.gameType):Number(button.lobbyId))===100&&button.parent===menu.gameCacheMC&&interactive(button));
+    if(candidates.length!==1)return 'waiting';
+    navigation.requested=true;navigation.requestedAt=Date.now();
+    try{candidates[0].event(win.Laya.Event?.CLICK||'click');}catch{navigation.failed=true;return 'unavailable';}
+    if(lobby.currentLobby?.viewName==='Multi')return 'requested';
+    return 'requested';
+  }
   const nodes = readDgSceneNodes(stage);
   // GoodRoad/native cards are also supported. Readiness follows the live
   // betting surface, not only a viewName string or a timed navigation flag.

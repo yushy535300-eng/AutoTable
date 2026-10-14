@@ -1,22 +1,17 @@
-# DG 手機流程診斷更新 v3.2.1
+# AutoBac v3.2.2 部署
 
-本包為診斷版：請先閱讀 [DG-MOBILE-DIAGNOSTIC.md](./DG-MOBILE-DIAGNOSTIC.md)，部署後版本應為 `3.2.1-diagnostic`。不代表已修好手機自動下注或 MT 代理限制。保留原白名單／資料庫，沿用下列Docker設定；舊v3.2說明僅供既有基準參考。
+詳細步驟：[AUTOBAC-V3.2.2-DEPLOY.md](./AUTOBAC-V3.2.2-DEPLOY.md)。這是完整網站更新，不是 Console 或舊只讀診斷版。
 
----
+1. 備份原 GitHub 專案，解壓網站 ZIP，把內容放在原專案根目錄，不要只上傳 ZIP。
+2. 沿用原 Render **Docker Web Service**、分支與網址；`Dockerfile Path=./Dockerfile`，Docker Command 留空。
+3. 保留原 `DATABASE_URL`、`ADMIN_PASSWORD` 及其他環境變數。`TZ_WHITELIST_ENABLED=true`，不要刪資料庫或停用白名單。
+4. 提交程式，部署最新 commit，等服務完成部署。
+5. 確認 `/api/health` 可用，`/autobac-version.json` 顯示 **`3.2.2-dg-mobile-v329`**。
+6. 關閉舊遊戲頁，重新開啟網站、用原帳號登入、選 DG 或 MT。無版型選單，不需 Console；初始停止。
 
-# AutoBac DG／MT v3.2：部署後自行登入
+DG手機自動要求原生Mobile，僅允許已核對的V3.2.9原生多桌builder；電腦維持Desktop。未知版本、缺資料或未能核對接受／結算不自動送單／推進。MT代理訪問限制仍未解除，這次DG更新不代表MT已修好。
 
-完整步驟、本次修正及驗證限制請看 [AUTOBAC-V3.2-DEPLOY.md](./AUTOBAC-V3.2-DEPLOY.md)。
-
-1. 備份原 GitHub 專案，解壓完整網站 ZIP，將內容放在專案根目錄，不要只上傳 ZIP。
-2. 更新原 Render Web Service、原分支、原網址；不要改成 Static Site。
-3. Docker 服務保持 `Dockerfile Path = ./Dockerfile`、Docker Command 留空。
-4. 保留原 `DATABASE_URL`、`ADMIN_PASSWORD`、其他環境變數及原白名單；`TZ_WHITELIST_ENABLED` 保持 `true`。不要刪除資料庫。
-5. 提交後部署最新 commit，待服務 Live。
-6. 核對 `/api/health` 與 `/autobac-version.json` 顯示 `3.2`，完整重新整理網站，再用自己的帳號登入。
-7. 登入後直接選 DG 或 MT，新版不再要求另外選版型。不需貼 Console，面板初始不自動下注。
-
-若沿用 Native Node 服務：
+若原服務為Native Node，沿用原型態：
 
 ```text
 Build Command: pnpm install --frozen-lockfile && pnpm build
@@ -24,6 +19,4 @@ Start Command: pnpm start
 Health Check Path: /api/health
 ```
 
-`pnpm build` 包含 DG、MT 引擎、網站與 Node 後端。不要公開 `.env`、帳密、Cookie、Token、HAR 或帳戶報告。
-
-手機預設 MT 使用原生 Mobile 流程、DG 使用既有電腦相容引擎。**未知 DG 原生手機 builder 仍會阻擋；MT 特定 Render 部署的上游拒絕頁仍須實際核對，不能把健康檢查或面板存在當成平台授權成功。**本包已做離線流程驗證，但未替使用者登入或送出真實下注。
+禁止公開 `.env`、帳密、Token、Cookie、HAR、資料庫或使用者流程紀錄。離線回歸不等同真機自動下注已驗證。

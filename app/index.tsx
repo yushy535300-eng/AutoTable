@@ -7,7 +7,7 @@ import { ensureDgMultiHall } from '@/lib/dg-auto-multihall';
 import { AutoBacGameHeader } from '@/components/autobac-game-header';
 import { AutoBacPlatformChoice, type GamePlatform } from '@/components/autobac-platform-choice';
 import { createDgOperationCapture, captureDgViewport } from '@/lib/dg-operation-capture';
-import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources } from '@/lib/dg-frame-installer';
+import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources, dgFrameInstallMode } from '@/lib/dg-frame-installer';
 import { enterMtForeground, installMtFramePanel, ensureMtMultiplePage, mtFrameAccessBlocked, mtFrameHasPending, mtFramePanelStatus, preserveMtFrameLedger, stopMtFramePanel } from '@/lib/mt-frame-installer';
 
 type Auth = { sessionId: string; token: string; platform: 'TZ' | 'OFA' };
@@ -101,10 +101,11 @@ export default function AutoBacScreen() {
   useEffect(() => {
     if (!auth || !gameUrl || selected !== 'DG') return;
     let attempts = 0, hallAttempts = 0;
-    const mode = /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop';
+    const requestedMode = /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop';
     const tick = () => {
       const frame = frameRef.current;
       if (!frame) return;
+      const mode = dgFrameInstallMode(frame, requestedMode);
       if (authInvalid) { stopDgFramePanel(frame); preserveDgFrameLedger(frame); return; }
       if (captureRunning) { stopDgFramePanel(frame); return; }
       // The compatible panel can display stopped/waiting state before MultiLobby
@@ -115,9 +116,9 @@ export default function AutoBacScreen() {
       }
       const hall = ensureDgMultiHall(frame, mode);
       if (hall !== 'ready' && hall !== 'finished') {
-        setMessage(hall === 'requested' ? '正在自動切到 DG 多桌廳…' : mode === 'mobile' ? '等待核對 DG 原生手機多桌引擎，尚未安裝下注面板…' : '等待 DG 原生多桌入口…');
+        setMessage(hall === 'requested' ? '正在自動切到 DG 多桌廳…' : mode === 'mobile' ? '等待 DG 手機原生多桌與已核對builder就緒，尚未送單…' : '等待 DG 原生多桌入口…');
         hallAttempts++;
-        if (mode === 'mobile' && (hall === 'unavailable' || hallAttempts >= 60)) setError('平台回傳DG原生手機入口，但此引擎尚未核對；沒有下注。網站已自動要求相容版，請提供目前畫面供核對，不需手動選版型。');
+        if (mode === 'mobile' && (hall === 'unavailable' || hallAttempts >= 90)) setError('DG手機多桌或原生builder未就緒／版本未核對，沒有下注；請按上方「診斷」匯出安全連線資料，不需提供憑證。');
         if (hall === 'unavailable' && mode === 'desktop') setError('未能確認 DG 多桌廳入口，尚未開始下注；請核對平台版本或重連。');
         if (hall === 'cross-origin') setError('DG 不在原同源前景入口，無法自動切廳或安裝面板。');
         if (mode === 'desktop' && hallAttempts >= 90 && !dgFramePanelStatus(frame).installed) setError('DG遊戲引擎尚未就緒，面板無法掛載；請核對遊戲是否已正常開啟。');

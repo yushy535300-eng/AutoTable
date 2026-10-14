@@ -10,9 +10,9 @@ export function detectGameDevice(browser?: BrowserDevice): GameDevice {
   return 'Desktop';
 }
 
-/** DG native Mobile is an explicit opt-in until its vendor bundle is verified. */
+/** Phones request the native profile; actual DG builders still pass the runtime version gate. */
 export function resolveGameDevice(platform: 'DG'|'MT', layout: GameLayout, detected: GameDevice): GameDevice {
   if (layout === 'native') return 'Mobile';
-  if (layout === 'desktop' || platform === 'DG') return 'Desktop';
+  if (layout === 'desktop') return 'Desktop';
   return detected;
 }

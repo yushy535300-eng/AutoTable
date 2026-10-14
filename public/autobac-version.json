@@ -1,12 +1,11 @@
 {
-  "version": "3.2.1-diagnostic",
-  "release": "dg-manual-mobile-flow-capture",
-  "releaseDate": "2026-10-14",
-  "platforms": [
-    "DG",
-    "MT"
-  ],
+  "version": "3.2.2-dg-mobile-v329",
+  "platforms": ["DG", "MT"],
+  "dgMobileNativeBundle": "V3.2.9",
+  "dgMobileRuntimeGate": "exact-ei-Ki-builder-source-fingerprint",
+  "dgPhoneProfile": "Mobile",
   "strategyMenuCount": 8,
   "initialState": "stopped",
-  "verification": "diagnostic-only; live-DG-mobile-auto-bet-unverified"
+  "mtProxyAccess": "unresolved-upstream-restriction",
+  "verification": "native-public-source-and-offline-regression; live-user-device-auto-bet-unverified"
 }

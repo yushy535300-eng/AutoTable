@@ -6,6 +6,7 @@ export type DgBet = {
   createdAt: number; submittedAt?: number; acceptedAt?: number; settledAt?: number; pnl?: number;
   staking?: 'martingale' | 'flat' | 'doubling';
   provider?: string;
+  attributionUncertain?: boolean;
 };
 export type DgLedgerState = {version:1; levels:Record<string,number>; bets:DgBet[]; roundStartedAt?:number};
 export function martingaleAmount(base:number, level:number):number {
@@ -52,6 +53,9 @@ export class DgBetLedger {
     if(Number(msg?.cmd)!==6||!msg.gameNo||msg.tableId==null)return null;
     const bet=this.state.bets.find(b=>b.key===`${msg.tableId}:${msg.gameNo}`&&['submitted','uncertain'].includes(b.state));
     if(!bet)return null;
+    // A later tool-sized acknowledgement cannot erase evidence of a second
+    // manual packet in the same game. Combined settlement is not tool-owned.
+    if(bet.attributionUncertain){bet.state='uncertain';return {bet,accepted:false};}
     // HAR cmd 6 explicitly contains codeId=0. A missing receipt code is not acceptance.
     if(msg.codeId==null){bet.state='uncertain';return {bet,accepted:false};}
     if(Number(msg.codeId)!==0){bet.state='rejected';return {bet,accepted:false};}
@@ -64,7 +68,7 @@ export class DgBetLedger {
   }
   settle(msg:any) {
     if(Number(msg?.cmd)!==1007||Number(msg.codeId??0)!==0||!msg.gameNo||msg.tableId==null)return null;
-    const bet=this.state.bets.find(b=>b.key===`${msg.tableId}:${msg.gameNo}`&&b.state==='accepted');
+    const bet=this.state.bets.find(b=>b.key===`${msg.tableId}:${msg.gameNo}`&&b.state==='accepted'&&!b.attributionUncertain);
     const pnl=msg.dList?.[1];
     if(!bet||typeof pnl!=='number'||!Number.isFinite(pnl))return null;
     const k=this.levelKey(bet.tableId,bet.scope);

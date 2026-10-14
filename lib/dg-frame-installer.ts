@@ -6,6 +6,17 @@ export type DgFrame = { contentWindow: any; contentDocument: Document | null };
 export type DgInstallResult = 'waiting' | 'installed' | 'cross-origin' | 'blocked';
 export type DgInstallMode = 'desktop' | 'mobile';
 
+export function dgFrameInstallMode(frame: DgFrame | null, fallback: DgInstallMode): DgInstallMode {
+  try{
+    const doc=frame?.contentDocument;
+    if(!doc||doc.location.origin!==window.location.origin)return fallback;
+    if(/^\/ddnewwap\//.test(doc.location.pathname))return 'mobile';
+    if(Array.from(doc.scripts||[]).some(script=>{try{return /^\/ddnewwap\//.test(new URL(script.src,doc.location.href).pathname);}catch{return false;}}))return 'mobile';
+    if(/^\/ddnewpc\//.test(doc.location.pathname))return 'desktop';
+  }catch{/* Unknown or inaccessible remains the requested mode. */}
+  return fallback;
+}
+
 /** Existing same-origin foreground only; no cross-origin DOM access workaround. */
 export function installDgFramePanel(frame: DgFrame, mode: DgInstallMode = 'desktop'): DgInstallResult {
   let win: any;
@@ -15,11 +26,11 @@ export function installDgFramePanel(frame: DgFrame, mode: DgInstallMode = 'deskt
     doc = frame.contentDocument;
     if (!win || !doc) return 'cross-origin';
     if (doc.location.origin !== window.location.origin) return 'cross-origin';
+    mode=dgFrameInstallMode(frame,mode);
     if (win.__DG_SINGLEPAGE__) return 'installed';
     if (!win.Laya?.stage?.getChildAt) return 'waiting';
     if (mode === 'mobile') {
-      // Do not install the PC direct-message console on a merely visual mobile
-      // lookalike. The runtime must retain the documented builder source.
+      // PC-compatible or the exact evidenced V3.2.9 mobile native builder only.
       const probe = inspectDgMobileNativeSurface(win);
       if (probe.readiness === 'waiting-stage' || probe.readiness === 'waiting-multi-table') return 'waiting';
       if (probe.readiness !== 'compatible') return 'blocked';

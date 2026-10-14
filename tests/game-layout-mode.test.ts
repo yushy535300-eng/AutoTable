@@ -1,8 +1,8 @@
 import {describe,it,expect} from 'vitest';
 import {detectGameDevice,resolveGameDevice} from '../lib/game-device';
 describe('Explicit AutoBac game layouts',()=>{
- it('recommended phone mode retains DG desktop compatibility and native MT',()=>{
-  expect(resolveGameDevice('DG','compatible','Mobile')).toBe('Desktop');
+ it('recommended phone mode requests the evidenced DG native profile and native MT',()=>{
+  expect(resolveGameDevice('DG','compatible','Mobile')).toBe('Mobile');
   expect(resolveGameDevice('MT','compatible','Mobile')).toBe('Mobile');
  });
  it('native Mobile is an explicit profile choice for both platforms',()=>{

@@ -60,9 +60,12 @@ export function describeDgScene(nodes: any[]) {
     candidateCount: candidates.length,
     walletSynced: dgSceneWallet(findDgScenePlayer(nodes)) !== null,
     candidates: candidates.slice(0, 60).map(node => {
+      const mobile=!!node.betBtnMan&&!node.betMan;
+      const confirm=node.betMan?.confirm??node.betBtnMan?.confirmBtn;
+      const cancel=node.betMan?.cancel??node.betBtnMan?.cancelBtn;
       const missing = [
         ['Banker', !!node.betBtn?.Banker], ['Player', !!node.betBtn?.Player],
-        ['confirm', !!node.betMan?.confirm], ['cancel', !!node.betMan?.cancel],
+        ['confirm', !!confirm], ['cancel', !!cancel],
         ['betMoneyTmp', !!node.betMoneyTmp], ['betMoneyTrue', !!node.betMoneyTrue],
         ['confirmBet', typeof node.confirmBet === 'function'],
         ['socket', typeof node.playerInfo?.socketMan?.sendData === 'function'],
@@ -71,7 +74,8 @@ export function describeDgScene(nodes: any[]) {
       return { tableId: String(node.tableId), table: String(node.gameInfo.tableName || ''),
         gameState: Number(node.gameInfo.stateId), roadCount: Array.isArray(node.gameInfo.roadArray) ? node.gameInfo.roadArray.length : 0,
         hasGameNo: !!node.gameInfo.gameNo, hasCountdown: node.gameInfo.countDown != null,
-        betFlag: node.betFlag === true, missing };
+        profile:mobile?'mobile-v329-shaped':'desktop-shaped',
+        betFlag: (mobile?node.betBtnMan?.betFlag:node.betFlag) === true, missing };
     }),
   };
 }

@@ -1,5 +1,6 @@
 import { readDgSceneNodes, findDgScenePlayer, dgSceneWallet, describeDgScene } from './dg-scene';
 import { exportDgMobileLoadedPublicScripts } from './dg-mobile-public-source';
+import { getDgBetControls } from './dg-mobile-native';
 
 type CaptureEvent = { at: string; kind: string; data: unknown };
 const identifier = (value: unknown) => /^[A-Za-z0-9_.:-]{1,64}$/.test(String(value ?? '')) ? String(value) : null;
@@ -36,7 +37,12 @@ export function summarizeDgCaptureBean(bean: any) {
 export function captureDgViewport(W: any) {
   try {
   const viewport = W?.visualViewport;
-  const canvasNode = W?.document?.querySelector('canvas');
+  // Mobile also creates a small auxiliary canvas before the actual Laya stage.
+  // Never report the first 300×150 helper canvas as the game's render surface.
+  const canvases: any[] = Array.from(W?.document?.querySelectorAll?.('canvas') || []);
+  const canvasNode = canvases.find(node=>node.id==='layaCanvas') || canvases.sort((a,b)=>{
+    const ar=a.getBoundingClientRect?.(),br=b.getBoundingClientRect?.();return (br?.width||0)*(br?.height||0)-(ar?.width||0)*(ar?.height||0);
+  })[0] || W?.document?.querySelector?.('canvas');
   const canvas = canvasNode?.getBoundingClientRect?.();
   const stage = W?.Laya?.stage;
   return {
@@ -64,7 +70,7 @@ export function createDgOperationCapture(W: any, outerWindow: any) {
   let scripts: ReturnType<typeof exportDgMobileLoadedPublicScripts>['scripts'] = [];
   let lastGameViewport = captureDgViewport(W);
   let currentSurface = describeDgScene([]);
-  let wallet: number | null = null, selectedChip: number | null = null;
+  let wallet: number | null = null, selectedChip: number | null = null, lastSocketDetected=false;
   const sentRounds = new Set<string>(), acceptedRounds = new Set<string>(), settledRounds = new Set<string>();
   const seenControls = new Set<string>();
   try { scripts = exportDgMobileLoadedPublicScripts(W.document).scripts; } catch { /* optional script metadata */ }
@@ -86,13 +92,14 @@ export function createDgOperationCapture(W: any, outerWindow: any) {
     const all = readDgSceneNodes(W?.Laya?.stage);
     for (let depth = 0; target && depth < 8; depth++, target = target.parent) {
       for (const card of all) {
-        if (target === card?.betMan?.confirm) label = 'confirm';
-        if (target === card?.betMan?.cancel) label = 'cancel';
+        const controls=getDgBetControls(card);
+        if (target === controls?.confirm) label = 'confirm';
+        if (target === controls?.cancel) label = 'cancel';
         if (target === card?.betBtn?.Banker) label = 'Banker';
         if (target === card?.betBtn?.Player) label = 'Player';
       }
       const name = String(target.buttonName ?? '');
-      if (/^(MultiLobby|MultiGames|GameLobby|Banker|Player|Chip(?:\d+)?|\d{1,7})$/.test(name)) label = name;
+      if (/^(MultiLobby|MultiGames|GameLobby|Multi|Banker|Player|Chip(?:\d+)?|\d{1,7})$/.test(name)) label = name;
       if (label) break;
     }
     const player = findDgScenePlayer(all);
@@ -115,6 +122,7 @@ export function createDgOperationCapture(W: any, outerWindow: any) {
     }
     const nodes = readDgSceneNodes(stage), player = findDgScenePlayer(nodes);
     const next = player?.socketMan;
+    lastSocketDetected=!!next&&next.socket?.connected!==false;
     if (next && next !== socket && typeof next.on === 'function' && typeof next.off === 'function' && typeof next.sendData === 'function') {
       detachSocket(); socket = next; socket.on('RECEIVED_SUCCESS', owner, receive);
       const currentSocket = socket, send = socket.sendData;
@@ -166,7 +174,7 @@ export function createDgOperationCapture(W: any, outerWindow: any) {
     try { const origin = new URL(W.__MT_DG_UPSTREAM_ORIGIN__); if (origin.protocol === 'https:' && !origin.username && !origin.password) upstreamOrigin = origin.origin; } catch { /* optional public origin only */ }
     const viewport = captureDgViewport(W); if (!('unavailable' in viewport)) lastGameViewport = viewport;
     try { const current = exportDgMobileLoadedPublicScripts(W.document).scripts; if (current.length) scripts = current; } catch { /* retain initial metadata after frame navigation */ }
-    return { version: 'DG-manual-flow-1', automaticActions: 0, recording: active,
+    return { version: 'DG-manual-flow-2', automaticActions: 0, recording: active,
       startedAt: new Date(startedAt).toISOString(),
       upstreamOrigin,
       outerViewport: captureDgViewport(outerWindow), gameViewport: lastGameViewport,
@@ -178,7 +186,7 @@ export function createDgOperationCapture(W: any, outerWindow: any) {
   function status() {
     const missing = [...new Set(currentSurface.candidates.flatMap(card => card.missing))];
     return { recording: active, elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
-      socketDetected: !!socket, wallet, selectedChip,
+      socketDetected: active?!!socket:lastSocketDetected, wallet, selectedChip,
       cardCandidates: currentSurface.candidateCount,
       completeCards: currentSurface.candidates.filter(card => !card.missing.length).length,
       missing, directionClick: seenControls.has('Banker') || seenControls.has('Player'),

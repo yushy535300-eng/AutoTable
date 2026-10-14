@@ -85,11 +85,14 @@ SOFTWARE.
       candidateCount: candidates.length,
       walletSynced: dgSceneWallet(findDgScenePlayer(nodes)) !== null,
       candidates: candidates.slice(0, 60).map((node) => {
+        const mobile = !!node.betBtnMan && !node.betMan;
+        const confirm = node.betMan?.confirm ?? node.betBtnMan?.confirmBtn;
+        const cancel = node.betMan?.cancel ?? node.betBtnMan?.cancelBtn;
         const missing = [
           ["Banker", !!node.betBtn?.Banker],
           ["Player", !!node.betBtn?.Player],
-          ["confirm", !!node.betMan?.confirm],
-          ["cancel", !!node.betMan?.cancel],
+          ["confirm", !!confirm],
+          ["cancel", !!cancel],
           ["betMoneyTmp", !!node.betMoneyTmp],
           ["betMoneyTrue", !!node.betMoneyTrue],
           ["confirmBet", typeof node.confirmBet === "function"],
@@ -103,7 +106,8 @@ SOFTWARE.
           roadCount: Array.isArray(node.gameInfo.roadArray) ? node.gameInfo.roadArray.length : 0,
           hasGameNo: !!node.gameInfo.gameNo,
           hasCountdown: node.gameInfo.countDown != null,
-          betFlag: node.betFlag === true,
+          profile: mobile ? "mobile-v329-shaped" : "desktop-shaped",
+          betFlag: (mobile ? node.betBtnMan?.betFlag : node.betFlag) === true,
           missing
         };
       })
@@ -257,6 +261,10 @@ SOFTWARE.
       if (Number(msg?.cmd) !== 6 || !msg.gameNo || msg.tableId == null) return null;
       const bet = this.state.bets.find((b) => b.key === `${msg.tableId}:${msg.gameNo}` && ["submitted", "uncertain"].includes(b.state));
       if (!bet) return null;
+      if (bet.attributionUncertain) {
+        bet.state = "uncertain";
+        return { bet, accepted: false };
+      }
       if (msg.codeId == null) {
         bet.state = "uncertain";
         return { bet, accepted: false };
@@ -284,7 +292,7 @@ SOFTWARE.
     }
     settle(msg) {
       if (Number(msg?.cmd) !== 1007 || Number(msg.codeId ?? 0) !== 0 || !msg.gameNo || msg.tableId == null) return null;
-      const bet = this.state.bets.find((b) => b.key === `${msg.tableId}:${msg.gameNo}` && b.state === "accepted");
+      const bet = this.state.bets.find((b) => b.key === `${msg.tableId}:${msg.gameNo}` && b.state === "accepted" && !b.attributionUncertain);
       const pnl = msg.dList?.[1];
       if (!bet || typeof pnl !== "number" || !Number.isFinite(pnl)) return null;
       const k = this.levelKey(bet.tableId, bet.scope);
@@ -2177,16 +2185,38 @@ ${DG_MOBILE_LAYOUT_CSS}
       return void 0;
     }
   }
+  function control(value) {
+    return typeof value === "function" || isRecord(value) && typeof safeProperty(value, "event") === "function";
+  }
+  function getDgBetControls(card) {
+    if (control(card?.betMan?.confirm) && control(card?.betMan?.cancel)) return { profile: "desktop", manager: card.betMan, confirm: card.betMan.confirm, cancel: card.betMan.cancel };
+    if (control(card?.betBtnMan?.confirmBtn) && control(card?.betBtnMan?.cancelBtn)) return { profile: "mobile-v329", manager: card.betBtnMan, confirm: card.betBtnMan.confirmBtn, cancel: card.betBtnMan.cancelBtn };
+    return null;
+  }
   function isDgMultiLobbyCard(value) {
     if (!isRecord(value)) return false;
-    const gameInfo = safeProperty(value, "gameInfo");
-    const betBtn = safeProperty(value, "betBtn");
-    const betMan = safeProperty(value, "betMan");
+    const gameInfo = safeProperty(value, "gameInfo"), betBtn = safeProperty(value, "betBtn");
     const socketMan = safeProperty(safeProperty(value, "playerInfo"), "socketMan");
-    return value.tableId !== void 0 && isRecord(gameInfo) && isRecord(betBtn) && betBtn.Banker !== void 0 && betBtn.Player !== void 0 && isRecord(betMan) && [betMan.confirm, betMan.cancel].every((control) => typeof control === "function" || isRecord(control) && typeof safeProperty(control, "event") === "function") && isRecord(safeProperty(value, "betMoneyTmp")) && isRecord(safeProperty(value, "betMoneyTrue")) && typeof safeProperty(value, "confirmBet") === "function" && isRecord(socketMan) && typeof socketMan.sendData === "function";
+    return value.tableId !== void 0 && isRecord(gameInfo) && isRecord(betBtn) && betBtn.Banker !== void 0 && betBtn.Player !== void 0 && getDgBetControls(value) !== null && isRecord(safeProperty(value, "betMoneyTmp")) && isRecord(safeProperty(value, "betMoneyTrue")) && typeof safeProperty(value, "confirmBet") === "function" && isRecord(socketMan) && typeof socketMan.sendData === "function";
+  }
+  function dgBuilderSourceFingerprint(fn) {
+    let source;
+    try {
+      source = Function.prototype.toString.call(fn).replace(/^function\s+/, "").replace(/\s+/g, "");
+    } catch {
+      return "";
+    }
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index++) hash = Math.imul(hash ^ source.charCodeAt(index), 16777619);
+    return `${source.length}:${(hash >>> 0).toString(16)}`;
+  }
+  function hasDgVerifiedMobilePacketBuilder(card) {
+    if (!isDgMultiLobbyCard(card) || getDgBetControls(card)?.profile !== "mobile-v329") return false;
+    return ["1517:2faa00b2", "1443:b3416a14"].includes(dgBuilderSourceFingerprint(card.confirmBet));
   }
   function hasDgVerifiedDirectPacketBuilder(card) {
     if (!isDgMultiLobbyCard(card)) return false;
+    if (getDgBetControls(card)?.profile === "mobile-v329") return hasDgVerifiedMobilePacketBuilder(card);
     let source = "";
     try {
       source = Function.prototype.toString.call(card.confirmBet);
@@ -2195,24 +2225,19 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     return ["betMoneyTmp", "betMoneyTrue", "gameNo", "BET_CHIP", "encrypt", "demo"].every((marker) => source.includes(marker));
   }
+  function dgNativeBetEnabled(card) {
+    const controls = getDgBetControls(card);
+    return controls?.profile === "mobile-v329" ? hasDgVerifiedMobilePacketBuilder(card) && controls.manager.betFlag === true : card?.betFlag === true;
+  }
   function inspectDgMobileNativeSurface(W) {
-    const win = W;
-    const width = Number(win?.innerWidth);
-    const height = Number(win?.innerHeight);
+    const win = W, width = Number(win?.innerWidth), height = Number(win?.innerHeight);
     const portrait = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > width;
     const stage = win?.Laya?.stage;
-    if (!isRecord(stage) || typeof safeProperty(stage, "getChildAt") !== "function") {
-      return { readiness: "waiting-stage", portrait, cardCount: 0, rejectedCardCount: 0 };
-    }
+    if (!isRecord(stage) || typeof safeProperty(stage, "getChildAt") !== "function") return { readiness: "waiting-stage", portrait, cardCount: 0, rejectedCardCount: 0 };
     const cards = readDgSceneNodes(stage).filter((node) => isDgMultiLobbyCard(node) && dgSceneNodeVisible(node));
     if (!cards.length) return { readiness: "waiting-multi-table", portrait, cardCount: 0, rejectedCardCount: 0 };
     const rejectedCardCount = cards.filter((card) => !hasDgVerifiedDirectPacketBuilder(card)).length;
-    return {
-      readiness: rejectedCardCount ? "unverified-packet-builder" : "compatible",
-      portrait,
-      cardCount: cards.length,
-      rejectedCardCount
-    };
+    return { readiness: rejectedCardCount ? "unverified-packet-builder" : "compatible", portrait, cardCount: cards.length, rejectedCardCount };
   }
 
   // lib/dg-mobile-public-source.ts
@@ -2333,6 +2358,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       if (!limit.ok) return { label: userStatus(limit.reason), ok: false };
       if (Number(card.gameInfo?.stateId) !== 1) return { label: "\u672C\u5C40\u5DF2\u5C01\u76E4\uFF0F\u672A\u958B\u653E", ok: false };
       if (remaining(card) < minSeconds) return { label: "\u5269\u9918\u6642\u9593\u4E0D\u8DB3\uFF0C\u672A\u4E0B\u6CE8", ok: false };
+      if (!dgNativeBetEnabled(card)) return { label: "\u539F\u751F\u78BA\u8A8D\u5C1A\u5728\u9396\u5B9A\uFF0C\u672A\u4E0B\u6CE8", ok: false };
       const decision = strategyFor(card);
       if (!decision.side) return { label: decision.reason || "\u7B56\u7565\u8CC7\u6599\u4E0D\u8DB3\uFF0C\u672A\u4E0B\u6CE8", ok: false };
       return { label: tableWait.get(id) ? userStatus(tableWait.get(id)) : running ? "\u6E96\u5099\u9001\u51FA" : "\u5DF2\u505C\u6B62", ok: false };
@@ -2374,7 +2400,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     function boards(all = nodes()) {
       const unique = /* @__PURE__ */ new Map();
       for (const n of all) {
-        if (n.tableId && n.gameInfo && n.betBtn?.Banker && n.betBtn?.Player && n.betMan?.confirm && n.betMan?.cancel && n.betMoneyTmp && n.betMoneyTrue && visible(n)) {
+        if (isDgMultiLobbyCard(n) && visible(n) && (getDgBetControls(n)?.profile !== "mobile-v329" || hasDgVerifiedMobilePacketBuilder(n))) {
           const k = String(n.tableId);
           if (!unique.has(k)) unique.set(k, n);
         }
@@ -2388,12 +2414,12 @@ ${DG_MOBILE_LAYOUT_CSS}
         const now = L.Browser?.now?.() ?? Date.now();
         result -= Math.max(0, (now - Number(info.starTime)) / 1e3);
       }
-      const text = String(n.countDownMan?.text ?? "").trim();
+      const text = String(n.countDownMan?.countDown ?? n.countDownMan?.text ?? "").trim();
       if (/^\d+$/.test(text)) result = Math.min(result, Number(text));
       return Number.isFinite(result) ? Math.max(0, result) : 0;
     }
     function ready(n) {
-      return visible(n) && Number(n.gameInfo?.stateId) === 1 && remaining(n) >= minSeconds && n.betFlag === true && visible(n.betBtn?.Banker) && visible(n.betBtn?.Player) && n.betBtn.Banker.mouseEnabled !== false && n.betBtn.Player.mouseEnabled !== false;
+      return visible(n) && Number(n.gameInfo?.stateId) === 1 && remaining(n) >= minSeconds && dgNativeBetEnabled(n) && visible(n.betBtn?.Banker) && visible(n.betBtn?.Player) && n.betBtn.Banker.mouseEnabled !== false && n.betBtn.Player.mouseEnabled !== false;
     }
     function roads(n) {
       if (!Array.isArray(n.gameInfo.roadArray)) return [];
@@ -2445,9 +2471,10 @@ ${DG_MOBILE_LAYOUT_CSS}
           const key = `${msg.tableId}:${msg.gameNo}`;
           const bet = ledger.pending().find((b) => b.key === key);
           if (bet && nativeBetKey !== key) {
+            bet.attributionUncertain = true;
             bet.state = "uncertain";
             persist();
-            stop("\u5075\u6E2C\u540C\u5C40\u984D\u5916\u4E0B\u6CE8\uFF1B\u672C\u7B46\u640D\u76CA\u4E0D\u80FD\u55AE\u7368\u6838\u5C0D\uFF0C\u505C\u6B62\u99AC\u4E01\u63A8\u9032");
+            stop("\u5075\u6E2C\u540C\u5C40\u984D\u5916\u4E0B\u6CE8\uFF1B\u672C\u7B46\u640D\u76CA\u4E0D\u80FD\u55AE\u7368\u6838\u5C0D\uFF0C\u505C\u6B62\u914D\u6CE8\u63A8\u9032");
           }
         }
         return originalSend.call(this, msg, ...args);
@@ -2564,6 +2591,12 @@ ${DG_MOBILE_LAYOUT_CSS}
         const detached = Object.create(card);
         detached.betMoneyTmp = Object.fromEntries(Object.keys(card.betMoneyTmp).map((k) => [k, k === internalSide ? amount : 0]));
         detached.betMoneyTrue = Object.fromEntries(Object.keys(card.betMoneyTrue).map((k) => [k, 0]));
+        if (getDgBetControls(card)?.profile === "mobile-v329") {
+          if (!hasDgVerifiedMobilePacketBuilder(card)) throw new Error("\u624B\u6A5F\u539F\u751Fbuilder\u7248\u672C\u672A\u6838\u5C0D\uFF0C\u6C92\u6709\u50B3\u9001");
+          detached.betBtn = Object.fromEntries(Object.entries(card.betBtn).map(([key, value]) => [key, Object.assign(Object.create(value), { hideHover: () => {
+          } })]));
+          detached.betBtnMan = Object.assign(Object.create(card.betBtnMan), { betFlag: true, visible: false });
+        }
         detached.betFlag = true;
         detached.showBetMan = () => {
         };
@@ -3336,7 +3369,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     document.addEventListener("visibilitychange", visibility);
     const timer = setInterval(() => void tick(), 500);
     window.__DG_SINGLEPAGE__ = {
-      version: "2.8.7-mobile-evidence-gate",
+      version: "3.2.2-mobile-v329-native",
       start: () => requestStart(),
       stop,
       scan,

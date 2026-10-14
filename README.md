@@ -1,20 +1,10 @@
-# DG 手機流程診斷器 v3.2.1
+# AutoBac／百家工程師 v3.2.2
 
-**這是診斷用網站更新版，不是已完成手機自動下注的完整版。先閱讀 [DG-MOBILE-DIAGNOSTIC.md](./DG-MOBILE-DIAGNOSTIC.md)。**
+**完整 DG／MT 網站更新包。**保留原登入、娛樂城白名單、資料庫及 `/admin`；登入後選 DG 或 MT。
 
-手機登入 DG 後按頂部「記錄流程」，由你手動進多桌並操作一筆測試金；完成結算後按「結束記錄」下載安全流程檔。診斷器不代按、不重送，錄製中停止工具自動操作。DG遊戲画面尺寸問題仍待現場viewport資料，不改懸浮面板尺寸。部署後 `/autobac-version.json` 顯示 `3.2.1-diagnostic`。
+本次以使用者手機流程與實際公開原廠 V3.2.9 bundle 修正 DG 手機多桌接線。手機真正用 `betBtnMan.confirmBtn/cancelBtn` 和管理器的 `betFlag`；不再因沿用 PC 欄位而排除所有桌卡。手機預設原生 Mobile，電腦維持 Desktop，未知原生 builder 仍阻擋。
 
----
-
-# AutoBac／百家工程師 v3.2
-
-完整 DG／MT 雙平台網站。保留原娛樂城登入、白名單、資料庫與 `/admin`；登入後選擇平台，載入共用風格的前景控制面板。
-
-**本次完整部署說明：[`AUTOBAC-V3.2-DEPLOY.md`](./AUTOBAC-V3.2-DEPLOY.md)。**
-
-## 部署
-
-將本包內容放在原 GitHub 專案根目錄。Render 保持原 Docker Web Service、`Dockerfile Path=./Dockerfile`，保留原授權、白名單與資料庫環境變數。原 `/admin`、`ADMIN_PASSWORD`、`TZ_WHITELIST_ENABLED=true` 及 `DATABASE_URL` 管理方式保留。不要刪除 Render 服務或資料庫，不要上傳 `.env`、帳密、Cookie、Token、完整 HAR 或資料庫。
+完整部署、修正內容與驗證界線請讀 **[AUTOBAC-V3.2.2-DEPLOY.md](./AUTOBAC-V3.2.2-DEPLOY.md)**，簡要部署請讀 [RENDER_DEPLOY.md](./RENDER_DEPLOY.md)。舊版本文件僅供歷史參考，請不要沿用舊版手機相容選單或診斷版步驟。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -22,14 +12,14 @@ pnpm build
 pnpm start
 ```
 
-Node.js 22／pnpm 9。部署完成後核對 `/api/health` 與 `/autobac-version.json`（本包版本 3.2），再完整重新整理網頁，使用原登入流程。
+Node.js 22／pnpm 9。保留原環境變數；`TZ_WHITELIST_ENABLED=true`；不要刪除資料庫或關閉白名單。Docker Web Service：`Dockerfile Path=./Dockerfile`。
 
-## 本次修正摘要
+部署後核對 `/api/health`，以及 `/autobac-version.json` 的 **`3.2.2-dg-mobile-v329`**，再重新開啟網站。登入／面板安裝不自動下注，初始保持停止；不需 Console。
 
-DG 原生控制物件與多桌場景搜尋、手機／迷你版尺寸、建置後算牌與奇偶選單、MT gs1 授權及 ti 參數、拒絕頁不掛載面板、MT 官方餘額接線、DG／MT 首次官方流水等待與更新操作已整合。原同局防重送、正式接受／結算、單桌平注／馬丁／倍投、多桌固定平注及停止保護均保留。新版不再要求另選版型。
+單桌可選平注、馬丁 1→3→7→15、倍投 1→2→4→8。3／5／所有已載入桌固定平注，各桌獨立推薦。正式接受與結算、防同局重送、止盈止損和人工混合下注歸屬保護保留。平台官方有效流水未知保持待同步，不用工具下注總額冒充。
 
-## 使用界線
+ChatGPT／Gemini等策略名稱沿用原網站本地算法，不是真實模型API。奇偶與V38依完整實際牌張，缺資料不回退其他策略；V38為原四式，不是剩牌機率或獲利保證。
 
-策略名稱中的 ChatGPT／Gemini 等為原網站本地算法，不是真實模型 API 呼叫。奇偶與 V38 使用完整實際牌張；V38 為原四式規則，不是剩牌機率或獲利保證。
+本次已接通原廠手機方法並有離線流程證據，**尚未在使用者部署真機驗證新版自動下注**。MT 同源代理的訪問限制仍未解除；不能把此 DG 更新當成 MT 已修好。沒有替使用者登入或下注，不保證獲利。
 
-測試為離線 DOM、合成 Socket 與攔截對外請求，沒有真實帳號或真實下注驗證。DG 未知原生手機 builder 仍阻擋；MT 特定 Render 部署能否取得真正遊戲，不能僅憑建置或面板存在宣稱成功。來源平台授權仍由來源伺服器決定。詳細行為、官方流水口徑與安全診斷方式請閱讀本次部署說明。
+測試源碼與匿名公開方法夾具包含在部署包。沒有真實帳密、Token、HAR、資料庫或使用者流程檔。
