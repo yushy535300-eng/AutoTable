@@ -149,7 +149,7 @@ if (!window.__MT_AUTOBAC_DIAG__) {
   const marker=W.__AUTOBAC_MT_FOREGROUND__,markerDescriptor=Object.getOwnPropertyDescriptor(W,'__AUTOBAC_MT_FOREGROUND__');
   let sameOriginParent=false;try{sameOriginParent=W.parent!==W&&W.parent.location.origin===location.origin;}catch{}
   const verifiedForeground=!!marker&&Object.isFrozen(marker)&&markerDescriptor?.value===marker&&!markerDescriptor.writable&&!markerDescriptor.configurable&&marker.kind==='autobac-mt-foreground-v1'&&marker.version===1&&marker.pathPrefix==='/mt-game'&&(location.pathname==='/mt-game'||location.pathname.startsWith('/mt-game/'))&&sameOriginParent;
-  const nativeConsole=location.protocol==='https:'&&['gsa.ofalive99.net','gsb.ofalive99.net'].includes(location.hostname);
+  const nativeConsole=location.protocol==='https:'&&['gsa.ofalive99.net','gsb.ofalive99.net','gs1.ofalive99.net'].includes(location.hostname);
   if (!verifiedForeground&&!nativeConsole) {
     console.warn('[AutoBac MT] 請在MT原生遊戲頁或已確認的本站前景執行；未安裝診斷或面板。'); return;
   }
@@ -158,6 +158,25 @@ if (!window.__MT_AUTOBAC_DIAG__) {
   const oldSend = WebSocket.prototype.send, oldFetch = W.fetch, oldOpen = XMLHttpRequest.prototype.open, oldXHRSend = XMLHttpRequest.prototype.send;
   const sockets = new Map(), xhrInfo = new WeakMap(), xhrListeners = new Map();
   const network = [], important = [], clicks = [], snapshots = [], liveTables = new Map();
+  let memberBalance = null, memberBalanceAt = 0;
+  function officialBalance(packet) {
+    const keys = ['balance','available_balance','availableBalance','wallet_balance','walletBalance'];
+    const seen = new WeakSet();
+    function walk(value, depth = 0) {
+      if (!value || typeof value !== 'object' || depth > 5 || seen.has(value)) return null;
+      seen.add(value);
+      for (const key of keys) {
+        const n = typeof value[key] === 'number' ? value[key] : Number(value[key]);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+      for (const child of Object.values(value)) {
+        const found = walk(child, depth + 1);
+        if (found !== null) return found;
+      }
+      return null;
+    }
+    return walk(packet);
+  }
   function createMtNativeObserver() {
   const records = [], groups = new Map(), unmatched = [];
   let serial = 0;
@@ -171,6 +190,10 @@ if (!window.__MT_AUTOBAC_DIAG__) {
   }
   function consume(entry, lookup) {
     const packet=entry.data,name=actionOf(packet);
+    if(entry.direction==='receive'&&name==='/api/v1/member/me/balance'&&codeOf(packet)===0) {
+      const value=officialBalance(packet.msg??packet.body??packet.data??packet);
+      if(value!==null){memberBalance=value;memberBalanceAt=Date.now();}
+    }
     if(entry.direction==='send'&&name.endsWith('/bet')&&packet.method==='POST') {
       const body=packet.body||{},tableId=String(packet.action?.data?.table_id||''),slips=body.order?.slips;
       if(!tableId||!body.game_sn||!Array.isArray(slips)||!slips.length)return;
@@ -211,7 +234,7 @@ if (!window.__MT_AUTOBAC_DIAG__) {
       const rs=records.filter(r=>g.recordIds.includes(r.id));
       return {...g,recordIds:[...g.recordIds],acceptedAmount:rs.filter(r=>r.state==='accepted').reduce((s,r)=>s+r.amount,0),unresolved:rs.filter(r=>r.state==='sent').length,settlement:g.settlement?{...g.settlement}:null};
     });
-    return {records:rows,groups:grouped,unmatchedSettlements:[...unmatched],acceptedCount:records.filter(r=>r.state==='accepted').length,settledGroupCount:grouped.filter(g=>g.settlement).length,observedGroupPoints:grouped.reduce((s,g)=>s+(g.settlement?.points||0),0),limits:'只核對已觀察到的原生操作；同桌多筆並行未回覆不猜ACK歸屬；個人win按桌/靴/局合計且去重，不使用全桌betinfo或show_win推算個人損益。'};
+    return {records:rows,groups:grouped,unmatchedSettlements:[...unmatched],acceptedCount:records.filter(r=>r.state==='accepted').length,settledGroupCount:grouped.filter(g=>g.settlement).length,observedGroupPoints:grouped.reduce((s,g)=>s+(g.settlement?.points||0),0),memberBalance:typeof memberBalance==='number'&&Date.now()-memberBalanceAt<120000?memberBalance:null,memberBalanceAt,limits:'只核對已觀察到的原生操作；同桌多筆並行未回覆不猜ACK歸屬；個人win按桌/靴/局合計且去重，不使用全桌betinfo或show_win推算個人損益。'};
   }
   return {consume,report};
 }
@@ -714,6 +737,66 @@ if(typeof module!=='undefined')module.exports={installMtNavigationPatch};
 installMtNavigationPatch(window, createMtTableNavigator);
 "use strict";
 (() => {
+  // lib/poker-strategies.ts
+  var rankNames = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  function cardRank(value) {
+    if (typeof value === "string" && rankNames.includes(value.toUpperCase().trim())) return value.toUpperCase().trim();
+    if (typeof value !== "number" && typeof value !== "string") return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 1 && n <= 52 ? rankNames[(n - 1) % 13] : null;
+  }
+  function baccaratValue(card) {
+    const n = rankNames.indexOf(card) + 1;
+    return n > 0 && n < 10 ? n : 0;
+  }
+  function handPoint(cards) {
+    return cards.reduce((sum, c) => sum + baccaratValue(c), 0) % 10;
+  }
+  function completePoker(hand) {
+    const { player: p, banker: b } = hand;
+    if (p.length < 2 || p.length > 3 || b.length < 2 || b.length > 3 || ![...p, ...b].every((c) => rankNames.includes(c))) return false;
+    const pp = handPoint(p.slice(0, 2)), bp = handPoint(b.slice(0, 2));
+    if (pp >= 8 || bp >= 8) return p.length === 2 && b.length === 2;
+    const pd = pp <= 5;
+    if (p.length !== (pd ? 3 : 2)) return false;
+    const third = pd ? baccaratValue(p[2]) : -1;
+    const bd = !pd ? bp <= 5 : bp <= 2 || bp === 3 && third !== 8 || bp === 4 && third >= 2 && third <= 7 || bp === 5 && third >= 4 && third <= 7 || bp === 6 && (third === 6 || third === 7);
+    return b.length === (bd ? 3 : 2);
+  }
+  function mtPokerHand(raw) {
+    if (!Array.isArray(raw) || raw.length < 4 || raw.length > 10) return null;
+    const values = raw.map((v) => typeof v === "number" ? v : NaN);
+    if (values.slice(0, 6).some((v) => !Number.isInteger(v) || v < 0 || v > 52)) return null;
+    const read = (indexes) => indexes.map((i) => values[i] ?? 0).filter((v) => v !== 0).map(cardRank);
+    const p = read([0, 2, 4]), b = read([1, 3, 5]);
+    if (!p.every((v) => v !== null) || !b.every((v) => v !== null)) return null;
+    const hand = { player: p, banker: b };
+    if (!completePoker(hand)) return null;
+    if (values.length >= 10 && (values[8] !== handPoint(p) || values[9] !== handPoint(b))) return null;
+    return hand;
+  }
+  function pokerDecision(strategy, hand) {
+    if (!hand || !completePoker(hand)) return { ok: false, reason: "\u7B49\u5F85\u540C\u684C\u540C\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u5BE6\u969B\u724C\u5F35\uFF1B\u4E0D\u4EE5\u724C\u8DEF\u6216\u9EDE\u6578\u4EE3\u66FF" };
+    const all = [...hand.player, ...hand.banker];
+    if (strategy === "parity") {
+      const values = all.map((c) => rankNames.indexOf(c) + 1), total = values.reduce((a, b) => a + b, 0);
+      const first = Math.floor(total / 10) + total % 10, terminal = first >= 10 ? first % 10 : first;
+      const side = terminal % 2 === 0 ? "\u838A" : "\u9592";
+      return { ok: true, side, confidence: 0, reason: `\u7D42\u503C\u5947\u5076\uFF1A${all.join("\u3001")}\uFF1B\u724C\u9762\u7E3D\u548C ${total} \u2192 ${first} \u2192 ${terminal}\uFF1B${terminal % 2 === 0 ? "\u5076\u838A" : "\u5947\u9592"}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u52DD\u7387\uFF09` };
+    }
+    const sum = all.reduce((n, c) => n + baccaratValue(c), 0), pb = handPoint(hand.banker), pp = handPoint(hand.player);
+    const votes = [sum % 3 === 0 ? "\u838A" : "\u9592", sum % 2 === 0 ? "\u838A" : "\u9592", pb * pp % 2 === 0 ? "\u838A" : "\u9592", (pb + pp) % 2 === 0 ? "\u838A" : "\u9592"];
+    const bankers = votes.filter((v) => v === "\u838A").length;
+    const reason = `V38\u56DB\u5F0F\uFF1AA ${votes[0]}\uFF0FB ${votes[1]}\uFF0F\u4E58 ${votes[2]}\uFF0F\u52A0 ${votes[3]}\uFF1B\u838A ${bankers}\uFF1A\u9592 ${4 - bankers}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u5269\u724C\u6A5F\u7387\uFF09`;
+    if (bankers === 2) return { ok: false, reason: reason + "\uFF1B\u540C\u7968\u89C0\u671B\uFF0C\u4E0D\u4E0B\u6CE8" };
+    return { ok: true, side: bankers > 2 ? "\u838A" : "\u9592", confidence: Math.max(bankers, 4 - bankers) * 25, reason };
+  }
+  function mtPreviousPoker(table, shoe, nextRound) {
+    const p = table?.lastPoker;
+    if (!p || p.tableId !== table.tableId || p.shoe !== shoe || p.round !== nextRound - 1 || p.conflict) return null;
+    return mtPokerHand(p.slots);
+  }
+
   // lib/road-render.ts
   var cellKey = (col, row) => `${col}:${row}`;
   function buildBigRoadState(results) {
@@ -1130,7 +1213,9 @@ installMtNavigationPatch(window, createMtTableNavigator);
     "grok",
     "meta",
     "combined",
-    "road"
+    "road",
+    "counting",
+    "parity"
   ];
   function asRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
@@ -1455,11 +1540,22 @@ installMtNavigationPatch(window, createMtTableNavigator);
         if (!entry.gameSn || entry.gameSnMismatch)
           betIssues.push("gameSn \u7121\u6548\u6216\u672A\u540C\u6B65");
       }
-      const decision = localProviderDecision(provider, first.state.results);
+      let decision;
+      let strategyReason;
+      if (provider === "counting" || provider === "parity") {
+        const hands = selected.map((table) => mtPreviousPoker(table, first.state.shoe, first.state.round));
+        if (hands.some((hand) => !hand)) return { ok: false, tableName, reason: "\u7B49\u5F85\u540C\u684C\u540C\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574 show_poker\uFF1B\u4E0D\u4EE5\u724C\u8DEF\u6216\u9EDE\u6578\u4EE3\u66FF" };
+        if (!hands.every((hand) => JSON.stringify(hand) === JSON.stringify(hands[0]))) return { ok: false, tableName, reason: "\u5019\u9078\u539F\u751F\u684C\u7684\u5BE6\u969B\u724C\u5F35\u4E0D\u4E00\u81F4\uFF0C\u4E0D\u80FD\u4F7F\u7528\u5947\u5076\uFF0F\u7B97\u724C" };
+        const calculated = pokerDecision(provider, hands[0]);
+        if (!calculated.ok) return { ok: false, tableName, reason: calculated.reason };
+        decision = calculated;
+        strategyReason = calculated.reason;
+      } else decision = localProviderDecision(provider, first.state.results);
       return {
         ok: true,
         tableName,
         provider,
+        strategyReason,
         side: decision.side,
         confidence: decision.confidence,
         shoe: first.state.shoe,
@@ -1586,7 +1682,7 @@ installMtNavigationPatch(window, createMtTableNavigator);
       const c = { ...state.config, ...values };
       if (![1, 3, 5, "all"].includes(c.rooms)) throw Error("\u684C\u6578\u7121\u6548");
       if (!Number.isSafeInteger(c.base) || c.base <= 0 || !Number.isSafeInteger(c.maximum) || c.maximum < c.base) throw Error("\u57FA\u672C\u91D1\u984D/\u55AE\u7B46\u4E0A\u9650\u7121\u6548");
-      if (!["combined", "chatgpt", "gemini", "grok", "meta", "road"].includes(c.provider)) throw Error("\u63A8\u85A6\u4F86\u6E90\u7121\u6548");
+      if (!["combined", "chatgpt", "gemini", "grok", "meta", "road", "counting", "parity"].includes(c.provider)) throw Error("\u63A8\u85A6\u4F86\u6E90\u7121\u6548");
       if (!["flat", "martingale", "doubling"].includes(c.staking) || !["new", "resume"].includes(c.startMode)) throw Error("\u914D\u6CE8/\u958B\u59CB\u65B9\u5F0F\u7121\u6548");
       for (const v of [c.takeProfit, c.stopLoss]) if (v !== null && (!Number.isFinite(v) || v <= 0)) throw Error("\u6B62\u76C8\u6B62\u640D\u8ACB\u8F38\u5165\u6B63\u91D1\u984D\uFF0C\u6216\u7559\u7A7A");
       c.tableNames = [...new Set(c.tableNames.map((n) => clean(n).toUpperCase()))];
@@ -2984,7 +3080,7 @@ button:disabled { filter: saturate(.45); cursor: not-allowed; }
 :host{--fit:1;position:fixed;right:24px;top:24px;z-index:2147483647;color:#f4f3f5;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;color-scheme:dark}*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fb68f;outline-offset:2px}button{border:0;background:none;color:inherit}[hidden]{display:none!important}#panel{width:290px;border-radius:22px;background:linear-gradient(155deg,#171619,#19171b 68%,#19191c);padding:13px 13px 16px;box-shadow:0 8px 28px #0005;transform:scale(var(--fit));transform-origin:top right;border:1px solid #ffffff08}#head{touch-action:none;cursor:grab;user-select:none}#head:active{cursor:grabbing}.topline{display:flex;justify-content:space-between;align-items:center;font-size:9px;color:#989899;height:20px}.brand{display:flex;align-items:center;gap:5px}.dot{width:5px;height:5px;background:#6ca578;border-radius:50%;box-shadow:0 0 7px #72b78066}.tools{display:flex;gap:2px}.tools button{font-size:14px;width:25px;height:24px;background:#252327;border-radius:50%;color:#9d9296}.tools #hide{color:#b36157}.headline{display:flex;align-items:center;justify-content:space-between;margin:10px 0 14px}.title{font-size:21px;font-weight:760;letter-spacing:-.8px;margin:0}.balance{text-align:right}.balance small{display:block;color:#8a858d;font-size:8px;margin-bottom:3px}.balance strong{font-size:12px;font-variant-numeric:tabular-nums}.hero{padding:12px 12px 9px;background:radial-gradient(ellipse at 80% 8%,#28312a77,transparent 60%),linear-gradient(135deg,#262529,#242225);border-radius:15px}.hero-head{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:11px}.pill{font-size:9px;background:#294e3540;color:#6dac7c;padding:4px 6px;border-radius:15px;white-space:nowrap}.pill.idle{background:#414047;color:#a9a5ae}.method{font-size:8px;color:#aba5ae;text-align:right}.roomline{font-weight:650;font-size:10px;display:flex;gap:7px;align-items:center}.subtle{font-size:8px;color:#8b858e;font-weight:400}.bet-main{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:6px 0 4px}.bet-value{display:flex;align-items:center;gap:7px}.amount{font-size:31px;font-weight:800;line-height:1.2;letter-spacing:-1px;font-variant-numeric:tabular-nums}.side{color:#ee6e56;background:#783d3244;border-radius:7px;font-size:9px;padding:4px 5px;white-space:nowrap}.side.player{color:#84a5e9;background:#354d8244}.ring{--progress:0deg;width:49px;height:49px;flex:none;border-radius:50%;background:conic-gradient(#73997a var(--progress),#52565344 0);padding:2px;display:grid;place-items:center}.ring-inner{width:100%;height:100%;border-radius:50%;background:#292a29;display:grid;place-items:center;color:#afbab1;font-size:12px}.meta{color:#9d929f;font-size:8px;line-height:1.6;min-height:12px}.steps{display:flex;gap:4px;margin-top:12px}.step{flex:1;height:3px;background:#514a52}.step.active{background:#629d6e;box-shadow:0 0 5px #6c996633}.step-labels{display:flex;justify-content:space-between;color:#87828b;font-size:8px;margin:5px 0 16px}.step-labels b{color:#e1dddF;font-weight:600}.metrics{display:flex;justify-content:space-between;gap:5px}.metrics>div{flex:1}.metrics>div:nth-child(2){text-align:center}.metrics>div:last-child{text-align:right}.metrics small{font-size:8px;color:#a9a0aa;display:block;margin-bottom:4px}.metrics strong{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}.meter{height:2px;background:#655a6244;margin:12px 0 11px;position:relative}.meter:after{content:"";position:absolute;left:50%;top:-2px;width:6px;height:6px;border-radius:50%;background:#a6a0a5}.main-action{width:100%;height:32px;border-radius:8px;font-weight:650;font-size:10px;background:#365140;color:#b7d3bd}.main-action.live{background:#5c302c;color:#d46b55}.action-mark{font-size:8px;margin-right:5px}.statusline{font-size:8px;line-height:1.5;color:#9e919f;margin-top:12px;min-height:14px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.section-head{display:flex;align-items:center;justify-content:space-between;margin:19px 0 8px;font-size:11px;font-weight:700}.gold{color:#bfa568;font-size:8px;font-weight:400}.stats{background:#242226;border-radius:11px;padding:12px;display:flex;justify-content:space-between;gap:5px}.stats>div{flex:1}.stats small{font-size:8px;color:#8f8794;display:block;margin-bottom:5px}.stats strong{font-size:12px;font-variant-numeric:tabular-nums}.green{color:#70b486!important}.red{color:#db7569!important}#tables{max-height:126px;overflow:auto;scrollbar-width:none}.table-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #ffffff07}.table-row:last-child{border-bottom:0}.table-badge{width:27px;height:27px;flex:none;border-radius:50%;background:#333138;color:#9fb29f;display:grid;place-items:center;font-size:9px}.table-info{flex:1;min-width:0}.table-info strong{font-size:9px}.table-info small{font-size:8px;color:#8b8391;display:block;margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.table-rec{text-align:right;white-space:nowrap;font-size:9px}.table-rec small{display:block;margin-top:3px;color:#8d8592;font-size:8px}.empty{padding:13px 0;color:#8b8490;font-size:9px}.footer{margin-top:10px;text-align:center;font-size:8px;color:#6f6876}.page-title{font-size:18px;margin:14px 0 5px}.page-caption{font-size:9px;color:#a49aa8;line-height:1.6;margin-bottom:13px}.form-body{max-height:460px;overflow:auto;scrollbar-width:thin;padding-right:2px}.form-body label{display:block;font-size:10px;color:#beb4c3;margin:12px 0 6px}.form-body select,.form-body input:not([type=checkbox]){width:100%;height:32px;background:#2b272e;border:1px solid #48404d;color:#e4dbe9;border-radius:7px;padding:6px 8px}.form-row{display:flex;gap:9px}.form-row>div{flex:1;min-width:0}.form-body .secondary{height:29px;border:1px solid #514657;border-radius:7px;font-size:10px;width:100%;color:#c3b7ce;background:#29232f}.scan-row{display:flex;gap:7px;align-items:center;margin:10px 0}.scan-row select{flex:1}.scan-row button{width:92px!important}#rooms{display:flex;flex-wrap:wrap;gap:5px}.room{border:1px solid #4f4459;border-radius:5px;font-size:9px;padding:5px 7px;background:#29232f}.room.active{border-color:#aa925c;background:#453b27;color:#e8daba}.ack{display:flex!important;align-items:flex-start;gap:5px;font-size:9px!important;line-height:1.6;margin:13px 0!important}.ack input{flex:none;margin:2px 0 0}.setting-actions{display:flex;gap:7px;margin-top:12px}.setting-actions button{flex:1;border-radius:7px;background:#35463a;height:31px;font-size:10px}.setting-actions #stop{background:#54312d;color:#db8277}.fineprint{font-size:8px;color:#8a7e94;line-height:1.6;margin-top:12px}.log-status{font-size:10px;color:#bcb29f;line-height:1.6;background:#252027;border-radius:9px;padding:10px;margin:12px 0}#events{white-space:pre-wrap;font-size:9px;color:#b0a5ba;line-height:1.8;max-height:430px;overflow:auto;overflow-wrap:anywhere;scrollbar-width:thin}#orb{width:43px;height:43px;border-radius:50%;display:grid;place-items:center;background:#f7f7f6;color:#999;box-shadow:0 0 0 4px #ffffff30,0 0 0 9px #ffffff17;font-size:10px;font-weight:700}#orb[hidden]{display:none}.titlebar{display:flex;align-items:center;gap:10px}.drag-mark{font-size:18px;color:#c1b8c5}.metrics .meter-value{font-size:10px}.range-view{width:100%;height:12px;accent-color:#70a87c;margin:6px 0 9px;cursor:default;pointer-events:none}.chart{width:100%;height:43px;display:block;margin-top:8px}.chart polyline{fill:none;stroke:#70b486;stroke-width:1.7;stroke-linejoin:round}.chart.red polyline{stroke:#da7569}.search-box{display:flex;justify-content:space-between;align-items:center;min-height:100px}.search-box strong{font-size:20px;letter-spacing:-.5px}.search-icon{width:48px;height:48px;border:2px solid #787d78;border-radius:50%;display:grid;place-items:center;color:#b4b7b4;font-size:22px}.search-note{font-size:8px;color:#928a98;line-height:1.7}.compact-actions{display:none;gap:8px;margin-top:10px}.compact-actions button{flex:1;background:#2c2930;border-radius:9px;height:33px;font-size:10px}.compact-actions #compact-stop{background:#512c29;color:#d77560}#panel.compact{width:276px;border-radius:15px;padding:10px 12px;background:#151518}.compact .headline,.compact .hero-head,.compact .main-action,.compact .section-head,.compact #tables,.compact .footer{display:none}.compact .hero{background:none;padding:7px 0 0;border-radius:0}.compact .bet-main{flex-direction:row-reverse;justify-content:flex-end;gap:12px}.compact .ring{width:44px;height:44px}.compact .bet-value{flex:1}.compact .amount{font-size:29px}.compact .steps{margin-top:10px}.compact .step-labels{margin-bottom:12px}.compact .meter{margin-top:9px}.compact .metrics{margin-top:11px}.compact .stats{border-radius:7px;margin-top:8px;padding:9px}.compact .stats small{font-size:7px}.compact .stats strong{font-size:11px}.compact .compact-actions{display:flex}.compact .chart{height:27px}.compact #hero-status{margin-top:6px}.compact .topline{height:24px}.compact .brand{color:#eee;font-weight:700;font-size:10px}.cards-result{margin:8px 0;padding:8px 5px;background:#17191b;border-radius:8px;display:flex;gap:8px}.cards-side{flex:1;min-width:0}.cards-side>small{font-size:8px;color:#96b1dc}.cards-side:last-child>small{color:#df8c84}.cards-side>strong{float:right;font-size:11px}.cards-line{display:flex;gap:4px;margin-top:6px}.playing-card{width:26px;height:36px;background:#e9e6e9;border-radius:3px;color:#222;font-size:10px;display:grid;place-items:center;background-position:center;background-size:contain;background-repeat:no-repeat}.cards-hint{font-size:7px;color:#8f8795;margin-top:4px}.report-shell{position:fixed;inset:6vh 5vw;z-index:2147483647;background:#141211;border:1px solid #645133;border-radius:11px;box-shadow:0 8px 40px #000b;color:#e6dcc8;display:flex;flex-direction:column;padding:18px;font-size:12px}.report-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #594626;padding-bottom:12px}.report-head h2{font-size:18px;margin:0}.report-head button{background:#403320;border-radius:5px;padding:7px 14px}.report-filter{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:15px 0}.report-filter label{font-size:11px}.report-filter select,.report-filter button{background:#292419;border:1px solid #594b31;border-radius:4px;padding:6px;color:#ddd2b7}.report-filter button.selected,.report-tabs button.selected{color:#e6bd67;border-color:#c89d42}.report-tabs{display:flex;gap:18px;border-bottom:1px solid #5d472c;margin-bottom:9px}.report-tabs button{padding:8px 0;font-size:12px;border-bottom:2px solid transparent;color:#9d9079}.report-note{font-size:10px;color:#9d9485;line-height:1.7;margin:5px 0 10px}.report-scroll{overflow:auto;flex:1;min-height:0}.report-grid{border-collapse:collapse;min-width:1040px;width:100%;font-size:11px}.report-grid th{background:#292013;color:#d9c89f;font-weight:500;white-space:nowrap;padding:10px 12px;text-align:left}.report-grid td{padding:10px 12px;border-bottom:1px solid #332a1d;white-space:nowrap}.report-footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:12px;color:#ae9a70}.report-footer button{padding:5px 10px;border:1px solid #655232;border-radius:5px}.report-empty{padding:40px;text-align:center;color:#ad9c86}.settings-added{font-size:9px;color:#a296a9;line-height:1.6;margin:8px 0}#settings-not-in-video{color:#b89c69}.back-report{font-size:10px}.compact #settings-page,.compact #logs-page{font-size:11px}#orb svg{width:20px;height:20px}#status{color:#a9a0b0}#stop-now{width:100%}@media(max-width:500px) and (orientation:portrait){:host{right:12px;top:20px}}
 .chart-wrap{margin-top:10px;background:#19171d;border:1px solid #ffffff07;border-radius:8px;padding:8px 8px 5px;position:relative}.chart-head{display:flex;justify-content:space-between;font-size:8px;color:#93889e;gap:8px}.chart-head strong{font-size:9px;color:#b3a8bf}.chart{height:64px;margin-top:7px;overflow:visible}.chart .chart-grid{stroke:#ffffff0c;stroke-width:.6}.chart .chart-zero{stroke:#ffffff20;stroke-dasharray:3 3;stroke-width:.6}.chart .chart-area{fill:#6dba8526}.chart.red .chart-area{fill:#dd727526}.chart polyline{stroke-width:1.7;stroke-linecap:round}.chart .chart-dot{fill:#89c99b}.chart.red .chart-dot{fill:#df8a81}.chart-empty{font-size:9px;color:#8f849a;text-align:center;position:absolute;left:0;right:0;top:48px}.chart-foot{display:flex;justify-content:space-between;color:#756b7f;font-size:7px;margin-top:3px}.compact .chart{height:44px}.compact .chart-wrap{padding-top:6px}.compact .chart-empty{top:38px}
 .parallel-control{display:flex;align-items:center;gap:10px;margin:0 0 10px}.parallel-control label{font-size:10px;color:#c5bcca;white-space:nowrap}.parallel-control select{flex:1;min-width:0;height:30px;border:1px solid #514658;border-radius:7px;padding:4px 7px;background:#2b272e;color:#f0e8f5;font-size:10px}.parallel-summary{color:#a69baa;font-size:8px;margin:-4px 0 10px}select:disabled{opacity:.65}.compact .parallel-control{margin-top:8px}.compact .parallel-summary{font-size:8px}
-#panel,#panel.compact{width:276px;height:448px;padding:10px 12px;display:flex;flex-direction:column;overflow:hidden;border-radius:15px}#head{flex:none}#overview-page,#settings-page,#logs-page{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#514658 transparent}.form-body{max-height:none;overflow:visible}.compact .parallel-control{margin:3px 0 5px;gap:8px}.compact .parallel-control label{font-size:8px}.compact .parallel-control select{height:24px;font-size:9px}.compact .parallel-summary{margin:0 0 3px;font-size:7px}.compact .roomline{margin-top:2px}.compact .hero{padding:4px 0 0}.compact .bet-main{margin:4px 0 2px}.compact .steps{margin-top:7px}.compact .step-labels{margin:4px 0 9px}.compact .metrics{margin-top:4px}.compact .range-view{margin:3px 0 4px;height:9px}.compact .statusline{margin-top:5px;min-height:12px;font-size:7px}.compact .stats{padding:8px;margin-top:6px}.compact .chart-wrap{padding:6px 7px 4px;margin-top:6px}.compact .chart{height:39px;margin-top:5px}.compact .chart-foot{font-size:6px}.compact .compact-actions{margin-top:6px;position:sticky;bottom:0;background:#151518;padding-top:4px;padding-bottom:1px}.compact .compact-actions button{height:31px}.report-shell{position:absolute;inset:auto;right:0;top:0;width:276px;height:448px;padding:10px;transform:scale(var(--fit));transform-origin:top right;border-radius:15px}.report-head h2{font-size:15px}.report-head button{padding:5px 8px;font-size:9px}.report-filter{gap:5px;margin:8px 0}.report-filter label{font-size:8px}.report-filter select,.report-filter button{padding:4px;font-size:8px}.report-tabs{gap:12px}.report-tabs button{font-size:10px}.report-note{font-size:8px}.report-footer{font-size:8px;gap:5px}.report-footer button{padding:4px;font-size:8px}.report-empty{padding:20px 8px}.report-grid{font-size:9px}.report-grid th,.report-grid td{padding:7px 8px}
+#panel,#panel.compact{width:276px;height:448px;padding:10px 12px;display:flex;flex-direction:column;overflow:hidden;border-radius:15px}#head{flex:none}#overview-page,#settings-page,#logs-page{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#514658 transparent}.form-body{max-height:none;overflow:visible}.compact .parallel-control{margin:3px 0 5px;gap:8px}.compact .parallel-control label{font-size:8px}.compact .parallel-control select{height:24px;font-size:9px}.compact .parallel-summary{margin:0 0 3px;font-size:7px}.compact .roomline{margin-top:2px}.compact .hero{padding:4px 0 0}.compact .bet-main{margin:4px 0 2px}.compact .steps{margin-top:7px}.compact .step-labels{margin:4px 0 9px}.compact .metrics{margin-top:4px}.compact .range-view{margin:3px 0 4px;height:9px}.compact .statusline{margin-top:5px;min-height:12px;font-size:7px}.compact .stats{padding:8px;margin-top:6px}.compact .chart-wrap{padding:6px 7px 4px;margin-top:6px}.compact .chart{height:39px;margin-top:5px}.compact .chart-foot{font-size:6px}.compact .compact-actions{margin-top:6px;position:sticky;bottom:0;background:#151518;padding-top:4px;padding-bottom:1px}.compact .compact-actions button{height:31px}.mini #overview-page{overflow:hidden}.mini .headline,.mini .metrics,.mini #pnl-range,.mini #chart-wrap,.mini .steps,.mini .step-labels,.mini .statusline,.mini #cards-result,.mini .section-head,.mini #tables,.mini #table-strip,.mini .footer,.mini .range-view{display:none}.mini .parallel-control{margin:3px 0 5px}.mini .parallel-summary{margin:0 0 4px}.mini .mini-context{margin:3px 0 5px}.mini .hero{padding:4px 0 0}.mini .bet-main{margin:4px 0 5px}.mini .compact-actions{display:flex;margin-top:5px;position:static}.mini .compact-actions button{height:31px}.report-shell{position:absolute;inset:auto;right:0;top:0;width:276px;height:448px;padding:10px;transform:scale(var(--fit));transform-origin:top right;border-radius:15px}.report-head h2{font-size:15px}.report-head button{padding:5px 8px;font-size:9px}.report-filter{gap:5px;margin:8px 0}.report-filter label{font-size:8px}.report-filter select,.report-filter button{padding:4px;font-size:8px}.report-tabs{gap:12px}.report-tabs button{font-size:10px}.report-note{font-size:8px}.report-footer{font-size:8px;gap:5px}.report-footer button{padding:4px;font-size:8px}.report-empty{padding:20px 8px}.report-grid{font-size:9px}.report-grid th,.report-grid td{padding:7px 8px}
 ${DG_DENSITY_CSS}
 ${DG_PRO_CSS}
 ${DG_SPACIOUS_CSS}
@@ -3014,7 +3110,9 @@ ${OFFICIAL_TURNOVER_CSS}
     { key: "gemini", label: "Gemini" },
     { key: "grok", label: "Grok" },
     { key: "meta", label: "Meta AI" },
-    { key: "road", label: "\u50B3\u7D71\u724C\u8DEF" }
+    { key: "road", label: "\u50B3\u7D71\u724C\u8DEF" },
+    { key: "counting", label: "V38 \u56DB\u5F0F\u7B97\u724C" },
+    { key: "parity", label: "\u5947\u5076\u7B56\u7565" }
   ];
   var PENDING_STATES = /* @__PURE__ */ new Set(["reserved", "submitted", "accepted", "uncertain"]);
   var STATE_LABEL = {
@@ -3463,6 +3561,7 @@ ${view.logs.map((entry) => `${entry.at}|${entry.text}`).join("\n")}`;
         events.append(article);
       };
       append(null, view.message || "\u2014");
+      for (const p of view.previews) if (p.strategyReason) append(null, `${p.tableName}\uFF1A${p.strategyReason}`);
       if (feedStatus) append(null, feedStatus);
       for (const issue of dataIssues) append(null, issue);
       for (const log of view.logs.slice().reverse()) append(log.at, log.text);
@@ -3508,6 +3607,7 @@ ${view.logs.map((entry) => `${entry.at}|${entry.text}`).join("\n")}`;
       q("countdown").textContent = focus?.count == null ? "\u2014" : String(focus.count);
       const seconds = typeof focus?.count === "number" && Number.isFinite(focus.count) ? focus.count : null;
       q("ring").style.setProperty("--progress", `${seconds === null ? 0 : Math.max(0, Math.min(1, seconds / 20)) * 360}deg`);
+      q("focus-meta").title = focus?.strategyReason || "";
       q("focus-meta").textContent = focus?.ok ? `\u9774 ${focus.shoe || "\u2014"} \xB7 \u5C40 ${focus.round ?? "\u2014"} \xB7 ${focus.pattern?.label || "\u724C\u8DEF\u5DF2\u9A57\u8B49"} \xB7 ${providerName(current?.provider ?? draft.provider)}` : waitingReason(focus);
       const step = current ? current.state === "accepted" ? 3 : 2 : view.running ? 1 : 0;
       for (let index = 1; index <= 4; index += 1) q(`step-${index}`).classList.toggle("active", index <= step);
@@ -4078,7 +4178,7 @@ ${view.logs.map((entry) => `${entry.at}|${entry.text}`).join("\n")}`;
         sameOriginParent = foreground && W.parent.location.origin === location.origin;
       } catch {
       }
-      const nativeConsole = location.protocol === "https:" && ["gsa.ofalive99.net", "gsb.ofalive99.net"].includes(location.hostname);
+      const nativeConsole = location.protocol === "https:" && ["gsa.ofalive99.net", "gsb.ofalive99.net", "gs1.ofalive99.net"].includes(location.hostname);
       if (!sameOriginParent && !nativeConsole) throw Error("\u8ACB\u5728MT\u539F\u751F\u904A\u6232\u9801\u6216\u5DF2\u78BA\u8A8D\u7684 /mt-game \u540C\u6E90\u524D\u666F\u5165\u53E3\u57F7\u884C");
       if (!W.__MT_AUTOBAC_DIAG__?.report || !W.__MT_AUTOBAC_DIAG__?.scrollToTable) throw Error("\u8ACB\u5728MT\u904A\u6232\u9801\u5B89\u88DD\u5B8C\u6574\u7248\u672C\uFF0C\u4E0D\u8981\u9078\u4E3B\u7DB2\u7AD9Console\u4E0A\u4E0B\u6587");
       for (const name of ["__MT_MULTIROOM_CLEANUP__", "__MT_COMBINED_CLEANUP__"]) if (typeof W[name] === "function") W[name]();
@@ -4125,6 +4225,7 @@ ${view.logs.map((entry) => `${entry.at}|${entry.text}`).join("\n")}`;
       console.log("[AutoBac MT] v0.6.1 \u5B98\u65B9\u4ECA\u65E5\uFF0F\u8FD17\u65E5\u6D41\u6C34\u7248\u5DF2\u8F09\u5165\uFF0C\u6C92\u6709\u958B\u59CB\u4E0B\u6CE8\u3002\u5148\u8A2D\u5B9A\u91D1\u984D\u53CA\u684C\u6578\uFF0C\u958B\u59CB\u6642\u52FE\u9078\u78BA\u8A8D\u3002");
       console.log("[AutoBac MT] \u4E0B\u6CE8\u53EA\u7531\u539F\u751F\u756B\u9762\u9EDE\u64CA\u9001\u51FA\uFF1B\u539F\u751FGET\u7528\u65BC\u91CD\u65B0\u53D6\u5F97\u5B8C\u6574\u724C\u8DEF\u3002\u505C\u6B62\uFF1Awindow.__MT_NATIVE_CLICK__.stop()\uFF1B\u79FB\u9664\uFF1Awindow.__MT_NATIVE_CLICK__.dispose()");
     } catch (e) {
+      W.__AUTOBAC_MT_CONSOLE_ERROR__ = "install_failed";
       console.error("[AutoBac MT \u5B89\u88DD\u5931\u6557]", e);
     }
   })();

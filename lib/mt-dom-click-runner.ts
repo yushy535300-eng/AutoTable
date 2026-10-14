@@ -69,7 +69,7 @@ export function createMtDomClickRunner(W:any, preview:(report:any,name:string,pr
     const c={...state.config,...values};
     if(![1,3,5,'all'].includes(c.rooms))throw Error('桌數無效');
     if(!Number.isSafeInteger(c.base)||c.base<=0||!Number.isSafeInteger(c.maximum)||c.maximum<c.base)throw Error('基本金額/單筆上限無效');
-    if(!['combined','chatgpt','gemini','grok','meta','road'].includes(c.provider))throw Error('推薦來源無效');
+    if(!['combined','chatgpt','gemini','grok','meta','road','counting','parity'].includes(c.provider))throw Error('推薦來源無效');
     if(!['flat','martingale','doubling'].includes(c.staking)||!['new','resume'].includes(c.startMode))throw Error('配注/開始方式無效');
     for(const v of [c.takeProfit,c.stopLoss])if(v!==null&&(!Number.isFinite(v)||v<=0))throw Error('止盈止損請輸入正金額，或留空');
     c.tableNames=[...new Set(c.tableNames.map(n=>clean(n).toUpperCase()))];

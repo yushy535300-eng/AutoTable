@@ -1,3 +1,4 @@
+import { pokerDecision, mtPreviousPoker } from './poker-strategies';
 import { localProviderDecision, getPatternInfo } from "./dg-original-ai";
 
 /** A completed baccarat-road result as emitted by the MT diagnostic. */
@@ -9,7 +10,9 @@ export type MtRecommendationProvider =
   | "grok"
   | "meta"
   | "combined"
-  | "road";
+  | "road"
+  | "counting"
+  | "parity";
 
 export type MtRecommendationFailure = {
   ok: false;
@@ -34,6 +37,7 @@ export type MtRecommendationSuccess = {
   results: Result[];
   dataSource: "exact-native-id" | "candidate-consensus";
   pattern: { label: string };
+  strategyReason?: string;
 };
 
 export type MtRecommendation =
@@ -72,7 +76,7 @@ const PROVIDERS: readonly MtRecommendationProvider[] = [
   "grok",
   "meta",
   "combined",
-  "road",
+  "road", "counting", "parity",
 ];
 
 function asRecord(value: unknown): UnknownRecord | null {
@@ -525,11 +529,21 @@ export function createMtRecommendationAdapter() {
         betIssues.push("gameSn 無效或未同步");
     }
 
-    const decision = localProviderDecision(provider, first.state.results);
+    let decision: {side:'莊'|'閒';confidence:number};
+    let strategyReason: string | undefined;
+    if (provider === 'counting' || provider === 'parity') {
+      const hands = selected.map(table=>mtPreviousPoker(table,first.state.shoe,first.state.round));
+      if (hands.some(hand=>!hand)) return {ok:false,tableName,reason:'等待同桌同靴上一局完整 show_poker；不以牌路或點數代替'};
+      if (!hands.every(hand=>JSON.stringify(hand)===JSON.stringify(hands[0]))) return {ok:false,tableName,reason:'候選原生桌的實際牌張不一致，不能使用奇偶／算牌'};
+      const calculated=pokerDecision(provider,hands[0]);
+      if (!calculated.ok) return {ok:false,tableName,reason:calculated.reason};
+      decision=calculated;strategyReason=calculated.reason;
+    } else decision = localProviderDecision(provider, first.state.results);
     return {
       ok: true,
       tableName,
       provider,
+      strategyReason,
       side: decision.side,
       confidence: decision.confidence,
       shoe: first.state.shoe,

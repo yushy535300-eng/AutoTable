@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { randomBytes, createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import { MT_DESKTOP_ORIGIN, MT_TRUSTED_ORIGINS, mtLaunchOrigin } from "../shared/mt-origins";
+import { MT_DESKTOP_ORIGIN, MT_TRUSTED_ORIGINS, mtLaunchOrigin, mtLaunchSearch } from "../shared/mt-origins";
 
 /** MT is intentionally not a general-purpose HTTP proxy. */
 export const MT_UPSTREAM_ORIGIN = MT_DESKTOP_ORIGIN;
@@ -62,8 +62,7 @@ export function parseMtLaunchUrl(raw: string): { pathAndSearch: string; origin: 
   if (!origin) return null;
   // Do not retain arbitrary redirect/proxy parameters from a browser-provided URL.
   const launch = new URL(origin + "/");
-  launch.searchParams.set("token", url.searchParams.get("token")!);
-  launch.searchParams.set("lang", "zhtw");
+  launch.search = mtLaunchSearch(url).toString();
   return { pathAndSearch: launch.pathname + launch.search, origin };
 }
 
@@ -194,7 +193,7 @@ export function mtProxyAssetUrl(value: string, upstreamOrigin: string = MT_UPSTR
 
 /** Rewrite root-relative module/CSS strings without turning arbitrary hosts into proxy targets. */
 export function rewriteMtAssetText(source: string, upstreamOrigin: string = MT_UPSTREAM_ORIGIN): string {
-  return source.replace(/(["'])(https:\/\/gs[ab]\.ofalive99\.net(?:\/[^"'\\\s]*)?|\/\/gs[ab]\.ofalive99\.net(?:\/[^"'\\\s]*)?|\/(?!\/|mt-game(?:\/|$))[^"'\\\s]*)\1/gi, (_whole, quote: string, url: string) => {
+  return source.replace(/(["'])(https:\/\/gs[ab1]\.ofalive99\.net(?:\/[^"'\\\s]*)?|\/\/gs[ab1]\.ofalive99\.net(?:\/[^"'\\\s]*)?|\/(?!\/|mt-game(?:\/|$))[^"'\\\s]*)\1/gi, (_whole, quote: string, url: string) => {
     // Protocol action paths (e.g. /api/v1/member/me) are not browser assets.
     // Rewriting every slash-prefixed string would corrupt native WSS commands.
     if (url.startsWith("/") && !url.startsWith("//") && !/^\/(?:assets|static|images?|img|fonts|js|css|media|video|audio|res|resource|build)(?:\/|$)/i.test(url) && !/\.(?:m?js|css|json|wasm|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|mp4|webm|flv|mp3|ogg|html?)(?:[?#]|$)/i.test(url)) return _whole;

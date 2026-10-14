@@ -121,7 +121,7 @@
   const marker=W.__AUTOBAC_MT_FOREGROUND__,markerDescriptor=Object.getOwnPropertyDescriptor(W,'__AUTOBAC_MT_FOREGROUND__');
   let sameOriginParent=false;try{sameOriginParent=W.parent!==W&&W.parent.location.origin===location.origin;}catch{}
   const verifiedForeground=!!marker&&Object.isFrozen(marker)&&markerDescriptor?.value===marker&&!markerDescriptor.writable&&!markerDescriptor.configurable&&marker.kind==='autobac-mt-foreground-v1'&&marker.version===1&&marker.pathPrefix==='/mt-game'&&(location.pathname==='/mt-game'||location.pathname.startsWith('/mt-game/'))&&sameOriginParent;
-  const nativeConsole=location.protocol==='https:'&&['gsa.ofalive99.net','gsb.ofalive99.net'].includes(location.hostname);
+  const nativeConsole=location.protocol==='https:'&&['gsa.ofalive99.net','gsb.ofalive99.net','gs1.ofalive99.net'].includes(location.hostname);
   if (!verifiedForeground&&!nativeConsole) {
     console.warn('[AutoBac MT] 請在MT原生遊戲頁或已確認的本站前景執行；未安裝診斷或面板。'); return;
   }
@@ -130,6 +130,25 @@
   const oldSend = WebSocket.prototype.send, oldFetch = W.fetch, oldOpen = XMLHttpRequest.prototype.open, oldXHRSend = XMLHttpRequest.prototype.send;
   const sockets = new Map(), xhrInfo = new WeakMap(), xhrListeners = new Map();
   const network = [], important = [], clicks = [], snapshots = [], liveTables = new Map();
+  let memberBalance = null, memberBalanceAt = 0;
+  function officialBalance(packet) {
+    const keys = ['balance','available_balance','availableBalance','wallet_balance','walletBalance'];
+    const seen = new WeakSet();
+    function walk(value, depth = 0) {
+      if (!value || typeof value !== 'object' || depth > 5 || seen.has(value)) return null;
+      seen.add(value);
+      for (const key of keys) {
+        const n = typeof value[key] === 'number' ? value[key] : Number(value[key]);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+      for (const child of Object.values(value)) {
+        const found = walk(child, depth + 1);
+        if (found !== null) return found;
+      }
+      return null;
+    }
+    return walk(packet);
+  }
   function createMtNativeObserver() {
   const records = [], groups = new Map(), unmatched = [];
   let serial = 0;
@@ -143,6 +162,10 @@
   }
   function consume(entry, lookup) {
     const packet=entry.data,name=actionOf(packet);
+    if(entry.direction==='receive'&&name==='/api/v1/member/me/balance'&&codeOf(packet)===0) {
+      const value=officialBalance(packet.msg??packet.body??packet.data??packet);
+      if(value!==null){memberBalance=value;memberBalanceAt=Date.now();}
+    }
     if(entry.direction==='send'&&name.endsWith('/bet')&&packet.method==='POST') {
       const body=packet.body||{},tableId=String(packet.action?.data?.table_id||''),slips=body.order?.slips;
       if(!tableId||!body.game_sn||!Array.isArray(slips)||!slips.length)return;
@@ -183,7 +206,7 @@
       const rs=records.filter(r=>g.recordIds.includes(r.id));
       return {...g,recordIds:[...g.recordIds],acceptedAmount:rs.filter(r=>r.state==='accepted').reduce((s,r)=>s+r.amount,0),unresolved:rs.filter(r=>r.state==='sent').length,settlement:g.settlement?{...g.settlement}:null};
     });
-    return {records:rows,groups:grouped,unmatchedSettlements:[...unmatched],acceptedCount:records.filter(r=>r.state==='accepted').length,settledGroupCount:grouped.filter(g=>g.settlement).length,observedGroupPoints:grouped.reduce((s,g)=>s+(g.settlement?.points||0),0),limits:'只核對已觀察到的原生操作；同桌多筆並行未回覆不猜ACK歸屬；個人win按桌/靴/局合計且去重，不使用全桌betinfo或show_win推算個人損益。'};
+    return {records:rows,groups:grouped,unmatchedSettlements:[...unmatched],acceptedCount:records.filter(r=>r.state==='accepted').length,settledGroupCount:grouped.filter(g=>g.settlement).length,observedGroupPoints:grouped.reduce((s,g)=>s+(g.settlement?.points||0),0),memberBalance:typeof memberBalance==='number'&&Date.now()-memberBalanceAt<120000?memberBalance:null,memberBalanceAt,limits:'只核對已觀察到的原生操作；同桌多筆並行未回覆不猜ACK歸屬；個人win按桌/靴/局合計且去重，不使用全桌betinfo或show_win推算個人損益。'};
   }
   return {consume,report};
 }

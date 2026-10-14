@@ -1,3 +1,4 @@
+import {createDgPokerTracker} from './poker-strategies';
 import {DgBetLedger, stakingAmount, type DgBet, type DgScope} from './dg-bet-ledger';
 import {localProviderDecision,getPatternInfo,providerAnalysisText,AI_PROVIDER_OPTIONS} from './dg-original-ai';
 import {DG_PANEL_HTML} from './dg-panel-view';
@@ -20,6 +21,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   const L=window.Laya;
   if(!L?.stage?.getChildAt){console.error('[DG] 目前不是載入完成的 DG Laya 頁面。請選擇 DG 分頁／Console 執行環境。');return;}
   const ledger=new DgBetLedger(window.__DG_LEDGER_STATE__);
+  const pokerTracker=createDgPokerTracker();
   let running=false,busy=false,disposed=false,epoch=0,once=false;
   let base=100,scope:DgScope='global',provider:any='combined',roomCount='1',maxStake=100000,minSeconds=6;
   let singleStaking:'martingale'|'flat'|'doubling'='martingale',userZoom=1;
@@ -71,7 +73,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const limit=checkDgAmount(card,stakeAmount(id));if(!limit.ok)return {label:userStatus(limit.reason),ok:false};
     if(Number(card.gameInfo?.stateId)!==1)return {label:'本局已封盤／未開放',ok:false};
     if(remaining(card)<minSeconds)return {label:'剩餘時間不足，未下注',ok:false};
-    if(roads(card).filter(x=>x!=='和').length<3)return {label:'牌路不足，未下注',ok:false};
+    const decision=strategyFor(card);if(!decision.side)return {label:decision.reason||'策略資料不足，未下注',ok:false};
     return {label:tableWait.get(id)?userStatus(tableWait.get(id)!):running?'準備送出':'已停止',ok:false};
   }
   function trackRounds(cards:any[]){
@@ -138,6 +140,15 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       return v>=1&&v<=4?'莊':v>=5&&v<=8?'閒':v>=9&&v<=12?'和':null;
     }).filter((x:any)=>x!==null) as Array<'莊'|'閒'|'和'>;
   }
+  function strategyFor(card:any,key=provider):{side?:'莊'|'閒';confidence:number;reason?:string}{
+    if(key==='counting'||key==='parity'){
+      const result=pokerTracker.decision(card,key);
+      return result.ok?result:{confidence:0,reason:result.reason};
+    }
+    const results=roads(card);
+    if(results.filter(x=>x!=='和').length<3)return {confidence:0,reason:'等待至少3筆莊閒牌路'};
+    return localProviderDecision(key,results);
+  }
   function sameSession(b:any){return b.playerInfo===account&&b.playerInfo?.socketMan===socket&&socket?.socket?.connected!==false;}
   function attach(all:any[]){
     const card=boards(all)[0];const p=card?.playerInfo;
@@ -173,6 +184,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   }
   function onMessage(msg:any){
     if(disposed)return;
+    queueMicrotask(()=>{if(!disposed)pokerTracker.observe(boards());});
     const receipt=ledger.receipt(msg);
     if(receipt){
       persist();log(`${receipt.bet.tableId}｜${receipt.bet.gameNo}｜${receipt.accepted?'平台已接受下注':'平台拒絕或金額不符，未標示成功'}｜${receipt.bet.side} ${money(receipt.bet.amount)}`);
@@ -204,13 +216,13 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   function roundPnl(){return roundBets().reduce((sum,b)=>sum+(b.pnl??0),0);}
   function unacknowledgedFunds(){return ledger.pending().filter(b=>b.state!=='accepted').reduce((sum,b)=>sum+b.amount,0);}
   async function execute(card:any,token:number,budget:{remaining:number}){
-    const results=roads(card);if(results.filter(x=>x!=='和').length<3){waitTable(card,'等待至少3筆莊閒牌路');return;}
+    const decision=strategyFor(card);if(!decision.side){waitTable(card,decision.reason||'策略資料不足');return;}
     const gameNo=String(card.gameInfo.gameNo??''),tableId=String(card.tableId);
     if(!gameNo||ledger.state.bets.some(b=>b.key===`${tableId}:${gameNo}`))return;
     if(!sameSession(card)||!ready(card))return;
     // Never combine with a manual wager or unconfirmed chips.
     if(Object.values(card.betMoneyTmp).some((v:any)=>Number(v)!==0)||Object.values(card.betMoneyTrue).some((v:any)=>Number(v)!==0)){waitTable(card,'本局已有原生下注或待確認籌碼，不混合投注');return;}
-    const side=localProviderDecision(provider,results).side;
+    const side=decision.side;
     const amount=stakeAmount(tableId);
     if(amount>maxStake){stop(`下一注 ${money(amount)} 超過你設定的金額上限 ${money(maxStake)}`);return;}
     const preflight=checkDgAmount(card,amount);
@@ -261,7 +273,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   }
   async function tick(){
     if(disposed||busy)return;
-    const all=nodes();attach(all);autoScan(boards(all));trackRounds(boards(all));render();
+    const all=nodes();pokerTracker.observe(boards(all));attach(all);autoScan(boards(all));trackRounds(boards(all));render();
     if(socket?.socket?.connected===false&&ledger.pending().length){
       for(const b of ledger.pending())b.state='uncertain';persist();stop('DG 連線已中斷；待結算下注保留為未確定，請核對正式紀錄');
     }
@@ -429,7 +441,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     q('parallel-count').value=q('count').value=roomCount;
     q('parallel-count').disabled=q('count').disabled=q('scan').disabled=selectionLocked();
     q('parallel-summary').textContent=`已選 ${selected.size} 桌 · 待接受 ${pending.filter(b=>b.state!=='accepted').length} · 待結算 ${pending.filter(b=>b.state==='accepted').length}`;
-    const rec=focus&&roads(focus).length>=3?localProviderDecision(previewProvider,roads(focus)):null;
+    const rec=focus?strategyFor(focus,previewProvider):null;
     q('focus-table').textContent=focus?(focus.gameInfo.tableName||String(focus.tableId)):'尋找可下注桌';
     q('focus-phase').textContent=currentBet?(currentBet.state==='accepted'?'等待結算':currentBet.state==='uncertain'?'回覆未確定':'等待接受'):focus&&ready(focus)?'可下注':'準備中';
     const focusId=focus?String(focus.tableId):'';
@@ -449,6 +461,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     q('countdown').textContent=seconds!==null?String(seconds):'—';
     q('ring').style.setProperty('--progress',`${seconds!==null?Math.min(1,seconds/Math.max(1,Number(focus.gameInfo.countDown)))*360:0}deg`);
     q('focus-meta').textContent=focus?`靴 ${focus.gameInfo.shoeId??'—'} · 局 ${focus.gameInfo.playId??'—'} · ${getPatternInfo(roads(focus)).label} · ${strategyLabel}`:`${strategyLabel} · 等候牌路與倒數`;
+    if(rec?.reason&&!currentBet)q('focus-meta').textContent+=' · '+rec.reason;
     if(currentBet){const original=AI_PROVIDER_OPTIONS.find(x=>x.key===currentBet.provider)?.label;q('focus-meta').textContent+=original&&original!==strategyLabel?`｜此單 ${original}`:'';}
     const stage=currentBet?(currentBet.state==='accepted'?3:2):running?1:0;
     for(let i=1;i<=4;i++)q('step-'+i).classList.toggle('active',i<=stage);
@@ -493,7 +506,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     q('tables').replaceChildren();
     q('table-strip').replaceChildren();
     for(const c of chosen){
-      const results=roads(c),r=results.length>=3?localProviderDecision(previewProvider,results):null;
+      const results=roads(c),r=strategyFor(c,previewProvider);
       const ownPending=pending.find(b=>b.tableId===String(c.tableId));
       const shownSide=ownPending?.side??r?.side;
       const row=document.createElement('div');row.className='table-row';
@@ -504,7 +517,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       info.append(title,meta);
       const amount=document.createElement('div');amount.className='table-rec';amount.textContent=money(ownPending?.amount??stakeAmount(String(c.tableId),previewBase,previewScope));
       const detail=document.createElement('small');const limitCheck=checkDgAmount(c,stakeAmount(String(c.tableId),previewBase,previewScope));
-      detail.textContent=ownPending?`${ownPending.state==='accepted'?'平台已接受 · 待結算':ownPending.state==='uncertain'?'回覆未確定':'已送出 · 待接受'} ${money(ownPending.amount)}`:!limitCheck.ok?limitCheck.reason:tableWait.get(String(c.tableId))??(r?`指標 ${r.confidence} · ${Math.floor(remaining(c))}s`:'等待資料');
+      detail.textContent=ownPending?`${ownPending.state==='accepted'?'平台已接受 · 待結算':ownPending.state==='uncertain'?'回覆未確定':'已送出 · 待接受'} ${money(ownPending.amount)}`:!limitCheck.ok?limitCheck.reason:tableWait.get(String(c.tableId))??(r.side?`指標 ${r.confidence} · ${Math.floor(remaining(c))}s`:r.reason||'等待資料');
       detail.style.maxWidth='120px';detail.style.whiteSpace='normal';detail.title=limitCheck.reason;amount.append(detail);
       row.append(badge,info,amount);q('tables').append(row);
       const chip=document.createElement('button');chip.className='table-chip'+(focus===c?' selected':'');
@@ -643,7 +656,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     rounds:()=>boards().filter(c=>selected.has(String(c.tableId))).map(c=>({table:c.gameInfo.tableName,round:c.gameInfo.playId,...currentRoundState(c)})),
     diagnostics:()=>boards().map(c=>({table:c.gameInfo?.tableName||String(c.tableId),tableId:String(c.tableId),selected:selected.has(String(c.tableId)),round:c.gameInfo?.playId,gameState:c.gameInfo?.stateId,countdown:Math.floor(remaining(c)),ready:ready(c),...checkDgAmount(c,stakeAmount(String(c.tableId)))})),
     exportLedger:()=>JSON.parse(JSON.stringify(ledger.state)),
-    analysis:(tableId:string)=>{const c=boards().find(n=>String(n.tableId)===String(tableId));return c?providerAnalysisText(provider,{results:roads(c)}):'未找到桌台';},
+    analysis:(tableId:string)=>{const c=boards().find(n=>String(n.tableId)===String(tableId));return c?(provider==='counting'||provider==='parity'?strategyFor(c).reason||'等待實際牌張':providerAnalysisText(provider,{results:roads(c)})):'未找到桌台';},
     dispose:()=>{running=false;disposed=true;epoch++;clearInterval(timer);official.dispose();cleanupFeedback();cleanupResize();providerMenu.cleanup();socket?.off('RECEIVED_SUCCESS',owner,onMessage);if(socket?.sendData===sendObserver)socket.sendData=originalSend;document.removeEventListener('visibilitychange',visibility);window.removeEventListener('resize',fitPanel);persist();host.remove();},
   };
   attach(nodes());scan();showPage('overview');official.refresh();render();

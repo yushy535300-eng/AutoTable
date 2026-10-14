@@ -24,6 +24,94 @@ SOFTWARE.
 /* DG 單頁多桌直接訊息下注；僅在 DG 同源頁面執行。不點擊按鈕；初始為停止。 */
 "use strict";
 (() => {
+  // lib/poker-strategies.ts
+  var rankNames = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  function cardRank(value) {
+    if (typeof value === "string" && rankNames.includes(value.toUpperCase().trim())) return value.toUpperCase().trim();
+    if (typeof value !== "number" && typeof value !== "string") return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 1 && n <= 52 ? rankNames[(n - 1) % 13] : null;
+  }
+  function baccaratValue(card) {
+    const n = rankNames.indexOf(card) + 1;
+    return n > 0 && n < 10 ? n : 0;
+  }
+  function handPoint(cards) {
+    return cards.reduce((sum, c) => sum + baccaratValue(c), 0) % 10;
+  }
+  function completePoker(hand) {
+    const { player: p, banker: b } = hand;
+    if (p.length < 2 || p.length > 3 || b.length < 2 || b.length > 3 || ![...p, ...b].every((c) => rankNames.includes(c))) return false;
+    const pp = handPoint(p.slice(0, 2)), bp = handPoint(b.slice(0, 2));
+    if (pp >= 8 || bp >= 8) return p.length === 2 && b.length === 2;
+    const pd = pp <= 5;
+    if (p.length !== (pd ? 3 : 2)) return false;
+    const third = pd ? baccaratValue(p[2]) : -1;
+    const bd = !pd ? bp <= 5 : bp <= 2 || bp === 3 && third !== 8 || bp === 4 && third >= 2 && third <= 7 || bp === 5 && third >= 4 && third <= 7 || bp === 6 && (third === 6 || third === 7);
+    return b.length === (bd ? 3 : 2);
+  }
+  function dgPokerHand(raw) {
+    let data = raw;
+    try {
+      if (typeof raw === "string") data = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (!data || typeof data.player !== "string" || typeof data.banker !== "string") return null;
+    const parse = (s) => {
+      const values = s.split("-");
+      if (values.length > 3 || values.some((v) => !v.trim())) return null;
+      const ranks = values.map(cardRank);
+      return ranks.every((r) => r !== null) ? ranks : null;
+    };
+    const player = parse(data.player), banker = parse(data.banker);
+    if (!player || !banker) return null;
+    const hand = { player, banker };
+    return completePoker(hand) ? hand : null;
+  }
+  function pokerDecision(strategy, hand) {
+    if (!hand || !completePoker(hand)) return { ok: false, reason: "\u7B49\u5F85\u540C\u684C\u540C\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u5BE6\u969B\u724C\u5F35\uFF1B\u4E0D\u4EE5\u724C\u8DEF\u6216\u9EDE\u6578\u4EE3\u66FF" };
+    const all = [...hand.player, ...hand.banker];
+    if (strategy === "parity") {
+      const values = all.map((c) => rankNames.indexOf(c) + 1), total = values.reduce((a, b) => a + b, 0);
+      const first = Math.floor(total / 10) + total % 10, terminal = first >= 10 ? first % 10 : first;
+      const side = terminal % 2 === 0 ? "\u838A" : "\u9592";
+      return { ok: true, side, confidence: 0, reason: `\u7D42\u503C\u5947\u5076\uFF1A${all.join("\u3001")}\uFF1B\u724C\u9762\u7E3D\u548C ${total} \u2192 ${first} \u2192 ${terminal}\uFF1B${terminal % 2 === 0 ? "\u5076\u838A" : "\u5947\u9592"}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u52DD\u7387\uFF09` };
+    }
+    const sum = all.reduce((n, c) => n + baccaratValue(c), 0), pb = handPoint(hand.banker), pp = handPoint(hand.player);
+    const votes = [sum % 3 === 0 ? "\u838A" : "\u9592", sum % 2 === 0 ? "\u838A" : "\u9592", pb * pp % 2 === 0 ? "\u838A" : "\u9592", (pb + pp) % 2 === 0 ? "\u838A" : "\u9592"];
+    const bankers = votes.filter((v) => v === "\u838A").length;
+    const reason = `V38\u56DB\u5F0F\uFF1AA ${votes[0]}\uFF0FB ${votes[1]}\uFF0F\u4E58 ${votes[2]}\uFF0F\u52A0 ${votes[3]}\uFF1B\u838A ${bankers}\uFF1A\u9592 ${4 - bankers}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u5269\u724C\u6A5F\u7387\uFF09`;
+    if (bankers === 2) return { ok: false, reason: reason + "\uFF1B\u540C\u7968\u89C0\u671B\uFF0C\u4E0D\u4E0B\u6CE8" };
+    return { ok: true, side: bankers > 2 ? "\u838A" : "\u9592", confidence: Math.max(bankers, 4 - bankers) * 25, reason };
+  }
+  function createDgPokerTracker() {
+    const snapshots = /* @__PURE__ */ new Map();
+    function observe(cards) {
+      for (const card of cards) {
+        const id = String(card.tableId || ""), g = card.gameInfo || {}, shoe = g.shoeId == null ? "" : String(g.shoeId), round = Number(g.playId);
+        if (!id || !shoe || !Number.isSafeInteger(round) || round < 1) continue;
+        const old = snapshots.get(id);
+        if (old && (old.shoe !== shoe || round < old.round)) snapshots.delete(id);
+        if (Number(g.stateId) === 1) continue;
+        const hand = dgPokerHand(g.poker);
+        if (!hand) continue;
+        const fingerprint = JSON.stringify(hand), previous = snapshots.get(id);
+        if (previous && previous.shoe === shoe && previous.round === round) {
+          if (previous.fingerprint !== fingerprint) previous.conflict = true;
+          continue;
+        }
+        snapshots.set(id, { shoe, round, hand, fingerprint, conflict: false });
+      }
+    }
+    function decision(card, strategy) {
+      const g = card?.gameInfo || {}, old = snapshots.get(String(card?.tableId || ""));
+      if (!old || old.conflict || old.shoe !== String(g.shoeId ?? "") || old.round !== Number(g.playId) - 1) return pokerDecision(strategy, null);
+      return pokerDecision(strategy, old.hand);
+    }
+    return { observe, decision };
+  }
+
   // lib/dg-bet-ledger.ts
   function martingaleAmount(base, level) {
     if (!Number.isSafeInteger(base) || base <= 0 || !Number.isInteger(level) || level < 0 || level > 30) throw new Error("\u57FA\u672C\u91D1\u984D\uFF0F\u968E\u7D1A\u7121\u6548");
@@ -1184,7 +1272,7 @@ button:disabled { filter: saturate(.45); cursor: not-allowed; }
 :host{--fit:1;position:fixed;right:24px;top:24px;z-index:2147483647;color:#f4f3f5;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;color-scheme:dark}*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #9fb68f;outline-offset:2px}button{border:0;background:none;color:inherit}[hidden]{display:none!important}#panel{width:290px;border-radius:22px;background:linear-gradient(155deg,#171619,#19171b 68%,#19191c);padding:13px 13px 16px;box-shadow:0 8px 28px #0005;transform:scale(var(--fit));transform-origin:top right;border:1px solid #ffffff08}#head{touch-action:none;cursor:grab;user-select:none}#head:active{cursor:grabbing}.topline{display:flex;justify-content:space-between;align-items:center;font-size:9px;color:#989899;height:20px}.brand{display:flex;align-items:center;gap:5px}.dot{width:5px;height:5px;background:#6ca578;border-radius:50%;box-shadow:0 0 7px #72b78066}.tools{display:flex;gap:2px}.tools button{font-size:14px;width:25px;height:24px;background:#252327;border-radius:50%;color:#9d9296}.tools #hide{color:#b36157}.headline{display:flex;align-items:center;justify-content:space-between;margin:10px 0 14px}.title{font-size:21px;font-weight:760;letter-spacing:-.8px;margin:0}.balance{text-align:right}.balance small{display:block;color:#8a858d;font-size:8px;margin-bottom:3px}.balance strong{font-size:12px;font-variant-numeric:tabular-nums}.hero{padding:12px 12px 9px;background:radial-gradient(ellipse at 80% 8%,#28312a77,transparent 60%),linear-gradient(135deg,#262529,#242225);border-radius:15px}.hero-head{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:11px}.pill{font-size:9px;background:#294e3540;color:#6dac7c;padding:4px 6px;border-radius:15px;white-space:nowrap}.pill.idle{background:#414047;color:#a9a5ae}.method{font-size:8px;color:#aba5ae;text-align:right}.roomline{font-weight:650;font-size:10px;display:flex;gap:7px;align-items:center}.subtle{font-size:8px;color:#8b858e;font-weight:400}.bet-main{display:flex;align-items:center;justify-content:space-between;gap:7px;margin:6px 0 4px}.bet-value{display:flex;align-items:center;gap:7px}.amount{font-size:31px;font-weight:800;line-height:1.2;letter-spacing:-1px;font-variant-numeric:tabular-nums}.side{color:#ee6e56;background:#783d3244;border-radius:7px;font-size:9px;padding:4px 5px;white-space:nowrap}.side.player{color:#84a5e9;background:#354d8244}.ring{--progress:0deg;width:49px;height:49px;flex:none;border-radius:50%;background:conic-gradient(#73997a var(--progress),#52565344 0);padding:2px;display:grid;place-items:center}.ring-inner{width:100%;height:100%;border-radius:50%;background:#292a29;display:grid;place-items:center;color:#afbab1;font-size:12px}.meta{color:#9d929f;font-size:8px;line-height:1.6;min-height:12px}.steps{display:flex;gap:4px;margin-top:12px}.step{flex:1;height:3px;background:#514a52}.step.active{background:#629d6e;box-shadow:0 0 5px #6c996633}.step-labels{display:flex;justify-content:space-between;color:#87828b;font-size:8px;margin:5px 0 16px}.step-labels b{color:#e1dddF;font-weight:600}.metrics{display:flex;justify-content:space-between;gap:5px}.metrics>div{flex:1}.metrics>div:nth-child(2){text-align:center}.metrics>div:last-child{text-align:right}.metrics small{font-size:8px;color:#a9a0aa;display:block;margin-bottom:4px}.metrics strong{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}.meter{height:2px;background:#655a6244;margin:12px 0 11px;position:relative}.meter:after{content:"";position:absolute;left:50%;top:-2px;width:6px;height:6px;border-radius:50%;background:#a6a0a5}.main-action{width:100%;height:32px;border-radius:8px;font-weight:650;font-size:10px;background:#365140;color:#b7d3bd}.main-action.live{background:#5c302c;color:#d46b55}.action-mark{font-size:8px;margin-right:5px}.statusline{font-size:8px;line-height:1.5;color:#9e919f;margin-top:12px;min-height:14px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.section-head{display:flex;align-items:center;justify-content:space-between;margin:19px 0 8px;font-size:11px;font-weight:700}.gold{color:#bfa568;font-size:8px;font-weight:400}.stats{background:#242226;border-radius:11px;padding:12px;display:flex;justify-content:space-between;gap:5px}.stats>div{flex:1}.stats small{font-size:8px;color:#8f8794;display:block;margin-bottom:5px}.stats strong{font-size:12px;font-variant-numeric:tabular-nums}.green{color:#70b486!important}.red{color:#db7569!important}#tables{max-height:126px;overflow:auto;scrollbar-width:none}.table-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #ffffff07}.table-row:last-child{border-bottom:0}.table-badge{width:27px;height:27px;flex:none;border-radius:50%;background:#333138;color:#9fb29f;display:grid;place-items:center;font-size:9px}.table-info{flex:1;min-width:0}.table-info strong{font-size:9px}.table-info small{font-size:8px;color:#8b8391;display:block;margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.table-rec{text-align:right;white-space:nowrap;font-size:9px}.table-rec small{display:block;margin-top:3px;color:#8d8592;font-size:8px}.empty{padding:13px 0;color:#8b8490;font-size:9px}.footer{margin-top:10px;text-align:center;font-size:8px;color:#6f6876}.page-title{font-size:18px;margin:14px 0 5px}.page-caption{font-size:9px;color:#a49aa8;line-height:1.6;margin-bottom:13px}.form-body{max-height:460px;overflow:auto;scrollbar-width:thin;padding-right:2px}.form-body label{display:block;font-size:10px;color:#beb4c3;margin:12px 0 6px}.form-body select,.form-body input:not([type=checkbox]){width:100%;height:32px;background:#2b272e;border:1px solid #48404d;color:#e4dbe9;border-radius:7px;padding:6px 8px}.form-row{display:flex;gap:9px}.form-row>div{flex:1;min-width:0}.form-body .secondary{height:29px;border:1px solid #514657;border-radius:7px;font-size:10px;width:100%;color:#c3b7ce;background:#29232f}.scan-row{display:flex;gap:7px;align-items:center;margin:10px 0}.scan-row select{flex:1}.scan-row button{width:92px!important}#rooms{display:flex;flex-wrap:wrap;gap:5px}.room{border:1px solid #4f4459;border-radius:5px;font-size:9px;padding:5px 7px;background:#29232f}.room.active{border-color:#aa925c;background:#453b27;color:#e8daba}.ack{display:flex!important;align-items:flex-start;gap:5px;font-size:9px!important;line-height:1.6;margin:13px 0!important}.ack input{flex:none;margin:2px 0 0}.setting-actions{display:flex;gap:7px;margin-top:12px}.setting-actions button{flex:1;border-radius:7px;background:#35463a;height:31px;font-size:10px}.setting-actions #stop{background:#54312d;color:#db8277}.fineprint{font-size:8px;color:#8a7e94;line-height:1.6;margin-top:12px}.log-status{font-size:10px;color:#bcb29f;line-height:1.6;background:#252027;border-radius:9px;padding:10px;margin:12px 0}#events{white-space:pre-wrap;font-size:9px;color:#b0a5ba;line-height:1.8;max-height:430px;overflow:auto;overflow-wrap:anywhere;scrollbar-width:thin}#orb{width:43px;height:43px;border-radius:50%;display:grid;place-items:center;background:#f7f7f6;color:#999;box-shadow:0 0 0 4px #ffffff30,0 0 0 9px #ffffff17;font-size:10px;font-weight:700}#orb[hidden]{display:none}.titlebar{display:flex;align-items:center;gap:10px}.drag-mark{font-size:18px;color:#c1b8c5}.metrics .meter-value{font-size:10px}.range-view{width:100%;height:12px;accent-color:#70a87c;margin:6px 0 9px;cursor:default;pointer-events:none}.chart{width:100%;height:43px;display:block;margin-top:8px}.chart polyline{fill:none;stroke:#70b486;stroke-width:1.7;stroke-linejoin:round}.chart.red polyline{stroke:#da7569}.search-box{display:flex;justify-content:space-between;align-items:center;min-height:100px}.search-box strong{font-size:20px;letter-spacing:-.5px}.search-icon{width:48px;height:48px;border:2px solid #787d78;border-radius:50%;display:grid;place-items:center;color:#b4b7b4;font-size:22px}.search-note{font-size:8px;color:#928a98;line-height:1.7}.compact-actions{display:none;gap:8px;margin-top:10px}.compact-actions button{flex:1;background:#2c2930;border-radius:9px;height:33px;font-size:10px}.compact-actions #compact-stop{background:#512c29;color:#d77560}#panel.compact{width:276px;border-radius:15px;padding:10px 12px;background:#151518}.compact .headline,.compact .hero-head,.compact .main-action,.compact .section-head,.compact #tables,.compact .footer{display:none}.compact .hero{background:none;padding:7px 0 0;border-radius:0}.compact .bet-main{flex-direction:row-reverse;justify-content:flex-end;gap:12px}.compact .ring{width:44px;height:44px}.compact .bet-value{flex:1}.compact .amount{font-size:29px}.compact .steps{margin-top:10px}.compact .step-labels{margin-bottom:12px}.compact .meter{margin-top:9px}.compact .metrics{margin-top:11px}.compact .stats{border-radius:7px;margin-top:8px;padding:9px}.compact .stats small{font-size:7px}.compact .stats strong{font-size:11px}.compact .compact-actions{display:flex}.compact .chart{height:27px}.compact #hero-status{margin-top:6px}.compact .topline{height:24px}.compact .brand{color:#eee;font-weight:700;font-size:10px}.cards-result{margin:8px 0;padding:8px 5px;background:#17191b;border-radius:8px;display:flex;gap:8px}.cards-side{flex:1;min-width:0}.cards-side>small{font-size:8px;color:#96b1dc}.cards-side:last-child>small{color:#df8c84}.cards-side>strong{float:right;font-size:11px}.cards-line{display:flex;gap:4px;margin-top:6px}.playing-card{width:26px;height:36px;background:#e9e6e9;border-radius:3px;color:#222;font-size:10px;display:grid;place-items:center;background-position:center;background-size:contain;background-repeat:no-repeat}.cards-hint{font-size:7px;color:#8f8795;margin-top:4px}.report-shell{position:fixed;inset:6vh 5vw;z-index:2147483647;background:#141211;border:1px solid #645133;border-radius:11px;box-shadow:0 8px 40px #000b;color:#e6dcc8;display:flex;flex-direction:column;padding:18px;font-size:12px}.report-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #594626;padding-bottom:12px}.report-head h2{font-size:18px;margin:0}.report-head button{background:#403320;border-radius:5px;padding:7px 14px}.report-filter{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:15px 0}.report-filter label{font-size:11px}.report-filter select,.report-filter button{background:#292419;border:1px solid #594b31;border-radius:4px;padding:6px;color:#ddd2b7}.report-filter button.selected,.report-tabs button.selected{color:#e6bd67;border-color:#c89d42}.report-tabs{display:flex;gap:18px;border-bottom:1px solid #5d472c;margin-bottom:9px}.report-tabs button{padding:8px 0;font-size:12px;border-bottom:2px solid transparent;color:#9d9079}.report-note{font-size:10px;color:#9d9485;line-height:1.7;margin:5px 0 10px}.report-scroll{overflow:auto;flex:1;min-height:0}.report-grid{border-collapse:collapse;min-width:1040px;width:100%;font-size:11px}.report-grid th{background:#292013;color:#d9c89f;font-weight:500;white-space:nowrap;padding:10px 12px;text-align:left}.report-grid td{padding:10px 12px;border-bottom:1px solid #332a1d;white-space:nowrap}.report-footer{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:12px;color:#ae9a70}.report-footer button{padding:5px 10px;border:1px solid #655232;border-radius:5px}.report-empty{padding:40px;text-align:center;color:#ad9c86}.settings-added{font-size:9px;color:#a296a9;line-height:1.6;margin:8px 0}#settings-not-in-video{color:#b89c69}.back-report{font-size:10px}.compact #settings-page,.compact #logs-page{font-size:11px}#orb svg{width:20px;height:20px}#status{color:#a9a0b0}#stop-now{width:100%}@media(max-width:500px) and (orientation:portrait){:host{right:12px;top:20px}}
 .chart-wrap{margin-top:10px;background:#19171d;border:1px solid #ffffff07;border-radius:8px;padding:8px 8px 5px;position:relative}.chart-head{display:flex;justify-content:space-between;font-size:8px;color:#93889e;gap:8px}.chart-head strong{font-size:9px;color:#b3a8bf}.chart{height:64px;margin-top:7px;overflow:visible}.chart .chart-grid{stroke:#ffffff0c;stroke-width:.6}.chart .chart-zero{stroke:#ffffff20;stroke-dasharray:3 3;stroke-width:.6}.chart .chart-area{fill:#6dba8526}.chart.red .chart-area{fill:#dd727526}.chart polyline{stroke-width:1.7;stroke-linecap:round}.chart .chart-dot{fill:#89c99b}.chart.red .chart-dot{fill:#df8a81}.chart-empty{font-size:9px;color:#8f849a;text-align:center;position:absolute;left:0;right:0;top:48px}.chart-foot{display:flex;justify-content:space-between;color:#756b7f;font-size:7px;margin-top:3px}.compact .chart{height:44px}.compact .chart-wrap{padding-top:6px}.compact .chart-empty{top:38px}
 .parallel-control{display:flex;align-items:center;gap:10px;margin:0 0 10px}.parallel-control label{font-size:10px;color:#c5bcca;white-space:nowrap}.parallel-control select{flex:1;min-width:0;height:30px;border:1px solid #514658;border-radius:7px;padding:4px 7px;background:#2b272e;color:#f0e8f5;font-size:10px}.parallel-summary{color:#a69baa;font-size:8px;margin:-4px 0 10px}select:disabled{opacity:.65}.compact .parallel-control{margin-top:8px}.compact .parallel-summary{font-size:8px}
-#panel,#panel.compact{width:276px;height:448px;padding:10px 12px;display:flex;flex-direction:column;overflow:hidden;border-radius:15px}#head{flex:none}#overview-page,#settings-page,#logs-page{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#514658 transparent}.form-body{max-height:none;overflow:visible}.compact .parallel-control{margin:3px 0 5px;gap:8px}.compact .parallel-control label{font-size:8px}.compact .parallel-control select{height:24px;font-size:9px}.compact .parallel-summary{margin:0 0 3px;font-size:7px}.compact .roomline{margin-top:2px}.compact .hero{padding:4px 0 0}.compact .bet-main{margin:4px 0 2px}.compact .steps{margin-top:7px}.compact .step-labels{margin:4px 0 9px}.compact .metrics{margin-top:4px}.compact .range-view{margin:3px 0 4px;height:9px}.compact .statusline{margin-top:5px;min-height:12px;font-size:7px}.compact .stats{padding:8px;margin-top:6px}.compact .chart-wrap{padding:6px 7px 4px;margin-top:6px}.compact .chart{height:39px;margin-top:5px}.compact .chart-foot{font-size:6px}.compact .compact-actions{margin-top:6px;position:sticky;bottom:0;background:#151518;padding-top:4px;padding-bottom:1px}.compact .compact-actions button{height:31px}.report-shell{position:absolute;inset:auto;right:0;top:0;width:276px;height:448px;padding:10px;transform:scale(var(--fit));transform-origin:top right;border-radius:15px}.report-head h2{font-size:15px}.report-head button{padding:5px 8px;font-size:9px}.report-filter{gap:5px;margin:8px 0}.report-filter label{font-size:8px}.report-filter select,.report-filter button{padding:4px;font-size:8px}.report-tabs{gap:12px}.report-tabs button{font-size:10px}.report-note{font-size:8px}.report-footer{font-size:8px;gap:5px}.report-footer button{padding:4px;font-size:8px}.report-empty{padding:20px 8px}.report-grid{font-size:9px}.report-grid th,.report-grid td{padding:7px 8px}
+#panel,#panel.compact{width:276px;height:448px;padding:10px 12px;display:flex;flex-direction:column;overflow:hidden;border-radius:15px}#head{flex:none}#overview-page,#settings-page,#logs-page{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#514658 transparent}.form-body{max-height:none;overflow:visible}.compact .parallel-control{margin:3px 0 5px;gap:8px}.compact .parallel-control label{font-size:8px}.compact .parallel-control select{height:24px;font-size:9px}.compact .parallel-summary{margin:0 0 3px;font-size:7px}.compact .roomline{margin-top:2px}.compact .hero{padding:4px 0 0}.compact .bet-main{margin:4px 0 2px}.compact .steps{margin-top:7px}.compact .step-labels{margin:4px 0 9px}.compact .metrics{margin-top:4px}.compact .range-view{margin:3px 0 4px;height:9px}.compact .statusline{margin-top:5px;min-height:12px;font-size:7px}.compact .stats{padding:8px;margin-top:6px}.compact .chart-wrap{padding:6px 7px 4px;margin-top:6px}.compact .chart{height:39px;margin-top:5px}.compact .chart-foot{font-size:6px}.compact .compact-actions{margin-top:6px;position:sticky;bottom:0;background:#151518;padding-top:4px;padding-bottom:1px}.compact .compact-actions button{height:31px}.mini #overview-page{overflow:hidden}.mini .headline,.mini .metrics,.mini #pnl-range,.mini #chart-wrap,.mini .steps,.mini .step-labels,.mini .statusline,.mini #cards-result,.mini .section-head,.mini #tables,.mini #table-strip,.mini .footer,.mini .range-view{display:none}.mini .parallel-control{margin:3px 0 5px}.mini .parallel-summary{margin:0 0 4px}.mini .mini-context{margin:3px 0 5px}.mini .hero{padding:4px 0 0}.mini .bet-main{margin:4px 0 5px}.mini .compact-actions{display:flex;margin-top:5px;position:static}.mini .compact-actions button{height:31px}.report-shell{position:absolute;inset:auto;right:0;top:0;width:276px;height:448px;padding:10px;transform:scale(var(--fit));transform-origin:top right;border-radius:15px}.report-head h2{font-size:15px}.report-head button{padding:5px 8px;font-size:9px}.report-filter{gap:5px;margin:8px 0}.report-filter label{font-size:8px}.report-filter select,.report-filter button{padding:4px;font-size:8px}.report-tabs{gap:12px}.report-tabs button{font-size:10px}.report-note{font-size:8px}.report-footer{font-size:8px;gap:5px}.report-footer button{padding:4px;font-size:8px}.report-empty{padding:20px 8px}.report-grid{font-size:9px}.report-grid th,.report-grid td{padding:7px 8px}
 ${DG_DENSITY_CSS}
 ${DG_PRO_CSS}
 ${DG_SPACIOUS_CSS}
@@ -2072,6 +2160,7 @@ ${OFFICIAL_TURNOVER_CSS}
       return;
     }
     const ledger = new DgBetLedger(window.__DG_LEDGER_STATE__);
+    const pokerTracker = createDgPokerTracker();
     let running = false, busy = false, disposed = false, epoch = 0, once = false;
     let base = 100, scope = "global", provider = "combined", roomCount = "1", maxStake = 1e5, minSeconds = 6;
     let singleStaking = "martingale", userZoom = 1;
@@ -2147,7 +2236,8 @@ ${OFFICIAL_TURNOVER_CSS}
       if (!limit.ok) return { label: userStatus(limit.reason), ok: false };
       if (Number(card.gameInfo?.stateId) !== 1) return { label: "\u672C\u5C40\u5DF2\u5C01\u76E4\uFF0F\u672A\u958B\u653E", ok: false };
       if (remaining(card) < minSeconds) return { label: "\u5269\u9918\u6642\u9593\u4E0D\u8DB3\uFF0C\u672A\u4E0B\u6CE8", ok: false };
-      if (roads(card).filter((x) => x !== "\u548C").length < 3) return { label: "\u724C\u8DEF\u4E0D\u8DB3\uFF0C\u672A\u4E0B\u6CE8", ok: false };
+      const decision = strategyFor(card);
+      if (!decision.side) return { label: decision.reason || "\u7B56\u7565\u8CC7\u6599\u4E0D\u8DB3\uFF0C\u672A\u4E0B\u6CE8", ok: false };
       return { label: tableWait.get(id) ? userStatus(tableWait.get(id)) : running ? "\u6E96\u5099\u9001\u51FA" : "\u5DF2\u505C\u6B62", ok: false };
     }
     function trackRounds(cards) {
@@ -2229,6 +2319,15 @@ ${OFFICIAL_TURNOVER_CSS}
         return v >= 1 && v <= 4 ? "\u838A" : v >= 5 && v <= 8 ? "\u9592" : v >= 9 && v <= 12 ? "\u548C" : null;
       }).filter((x) => x !== null);
     }
+    function strategyFor(card, key = provider) {
+      if (key === "counting" || key === "parity") {
+        const result = pokerTracker.decision(card, key);
+        return result.ok ? result : { confidence: 0, reason: result.reason };
+      }
+      const results = roads(card);
+      if (results.filter((x) => x !== "\u548C").length < 3) return { confidence: 0, reason: "\u7B49\u5F85\u81F3\u5C113\u7B46\u838A\u9592\u724C\u8DEF" };
+      return localProviderDecision(key, results);
+    }
     function sameSession(b) {
       return b.playerInfo === account && b.playerInfo?.socketMan === socket && socket?.socket?.connected !== false;
     }
@@ -2276,6 +2375,9 @@ ${OFFICIAL_TURNOVER_CSS}
     }
     function onMessage(msg) {
       if (disposed) return;
+      queueMicrotask(() => {
+        if (!disposed) pokerTracker.observe(boards());
+      });
       const receipt = ledger.receipt(msg);
       if (receipt) {
         persist();
@@ -2328,9 +2430,9 @@ ${OFFICIAL_TURNOVER_CSS}
       return ledger.pending().filter((b) => b.state !== "accepted").reduce((sum, b) => sum + b.amount, 0);
     }
     async function execute(card, token, budget) {
-      const results = roads(card);
-      if (results.filter((x) => x !== "\u548C").length < 3) {
-        waitTable(card, "\u7B49\u5F85\u81F3\u5C113\u7B46\u838A\u9592\u724C\u8DEF");
+      const decision = strategyFor(card);
+      if (!decision.side) {
+        waitTable(card, decision.reason || "\u7B56\u7565\u8CC7\u6599\u4E0D\u8DB3");
         return;
       }
       const gameNo = String(card.gameInfo.gameNo ?? ""), tableId = String(card.tableId);
@@ -2340,7 +2442,7 @@ ${OFFICIAL_TURNOVER_CSS}
         waitTable(card, "\u672C\u5C40\u5DF2\u6709\u539F\u751F\u4E0B\u6CE8\u6216\u5F85\u78BA\u8A8D\u7C4C\u78BC\uFF0C\u4E0D\u6DF7\u5408\u6295\u6CE8");
         return;
       }
-      const side = localProviderDecision(provider, results).side;
+      const side = decision.side;
       const amount = stakeAmount(tableId);
       if (amount > maxStake) {
         stop(`\u4E0B\u4E00\u6CE8 ${money(amount)} \u8D85\u904E\u4F60\u8A2D\u5B9A\u7684\u91D1\u984D\u4E0A\u9650 ${money(maxStake)}`);
@@ -2414,6 +2516,7 @@ ${OFFICIAL_TURNOVER_CSS}
     async function tick() {
       if (disposed || busy) return;
       const all = nodes();
+      pokerTracker.observe(boards(all));
       attach(all);
       autoScan(boards(all));
       trackRounds(boards(all));
@@ -2710,7 +2813,7 @@ ${OFFICIAL_TURNOVER_CSS}
       q("parallel-count").value = q("count").value = roomCount;
       q("parallel-count").disabled = q("count").disabled = q("scan").disabled = selectionLocked();
       q("parallel-summary").textContent = `\u5DF2\u9078 ${selected.size} \u684C \xB7 \u5F85\u63A5\u53D7 ${pending.filter((b) => b.state !== "accepted").length} \xB7 \u5F85\u7D50\u7B97 ${pending.filter((b) => b.state === "accepted").length}`;
-      const rec = focus && roads(focus).length >= 3 ? localProviderDecision(previewProvider, roads(focus)) : null;
+      const rec = focus ? strategyFor(focus, previewProvider) : null;
       q("focus-table").textContent = focus ? focus.gameInfo.tableName || String(focus.tableId) : "\u5C0B\u627E\u53EF\u4E0B\u6CE8\u684C";
       q("focus-phase").textContent = currentBet ? currentBet.state === "accepted" ? "\u7B49\u5F85\u7D50\u7B97" : currentBet.state === "uncertain" ? "\u56DE\u8986\u672A\u78BA\u5B9A" : "\u7B49\u5F85\u63A5\u53D7" : focus && ready(focus) ? "\u53EF\u4E0B\u6CE8" : "\u6E96\u5099\u4E2D";
       const focusId = focus ? String(focus.tableId) : "";
@@ -2730,6 +2833,7 @@ ${OFFICIAL_TURNOVER_CSS}
       q("countdown").textContent = seconds !== null ? String(seconds) : "\u2014";
       q("ring").style.setProperty("--progress", `${seconds !== null ? Math.min(1, seconds / Math.max(1, Number(focus.gameInfo.countDown))) * 360 : 0}deg`);
       q("focus-meta").textContent = focus ? `\u9774 ${focus.gameInfo.shoeId ?? "\u2014"} \xB7 \u5C40 ${focus.gameInfo.playId ?? "\u2014"} \xB7 ${getPatternInfo(roads(focus)).label} \xB7 ${strategyLabel}` : `${strategyLabel} \xB7 \u7B49\u5019\u724C\u8DEF\u8207\u5012\u6578`;
+      if (rec?.reason && !currentBet) q("focus-meta").textContent += " \xB7 " + rec.reason;
       if (currentBet) {
         const original = AI_PROVIDER_OPTIONS.find((x) => x.key === currentBet.provider)?.label;
         q("focus-meta").textContent += original && original !== strategyLabel ? `\uFF5C\u6B64\u55AE ${original}` : "";
@@ -2794,7 +2898,7 @@ ${OFFICIAL_TURNOVER_CSS}
       q("tables").replaceChildren();
       q("table-strip").replaceChildren();
       for (const c of chosen) {
-        const results = roads(c), r = results.length >= 3 ? localProviderDecision(previewProvider, results) : null;
+        const results = roads(c), r = strategyFor(c, previewProvider);
         const ownPending = pending.find((b) => b.tableId === String(c.tableId));
         const shownSide = ownPending?.side ?? r?.side;
         const row = document.createElement("div");
@@ -2814,7 +2918,7 @@ ${OFFICIAL_TURNOVER_CSS}
         amount.textContent = money(ownPending?.amount ?? stakeAmount(String(c.tableId), previewBase, previewScope));
         const detail = document.createElement("small");
         const limitCheck = checkDgAmount(c, stakeAmount(String(c.tableId), previewBase, previewScope));
-        detail.textContent = ownPending ? `${ownPending.state === "accepted" ? "\u5E73\u53F0\u5DF2\u63A5\u53D7 \xB7 \u5F85\u7D50\u7B97" : ownPending.state === "uncertain" ? "\u56DE\u8986\u672A\u78BA\u5B9A" : "\u5DF2\u9001\u51FA \xB7 \u5F85\u63A5\u53D7"} ${money(ownPending.amount)}` : !limitCheck.ok ? limitCheck.reason : tableWait.get(String(c.tableId)) ?? (r ? `\u6307\u6A19 ${r.confidence} \xB7 ${Math.floor(remaining(c))}s` : "\u7B49\u5F85\u8CC7\u6599");
+        detail.textContent = ownPending ? `${ownPending.state === "accepted" ? "\u5E73\u53F0\u5DF2\u63A5\u53D7 \xB7 \u5F85\u7D50\u7B97" : ownPending.state === "uncertain" ? "\u56DE\u8986\u672A\u78BA\u5B9A" : "\u5DF2\u9001\u51FA \xB7 \u5F85\u63A5\u53D7"} ${money(ownPending.amount)}` : !limitCheck.ok ? limitCheck.reason : tableWait.get(String(c.tableId)) ?? (r.side ? `\u6307\u6A19 ${r.confidence} \xB7 ${Math.floor(remaining(c))}s` : r.reason || "\u7B49\u5F85\u8CC7\u6599");
         detail.style.maxWidth = "120px";
         detail.style.whiteSpace = "normal";
         detail.title = limitCheck.reason;
@@ -3137,7 +3241,7 @@ ${OFFICIAL_TURNOVER_CSS}
       exportLedger: () => JSON.parse(JSON.stringify(ledger.state)),
       analysis: (tableId) => {
         const c = boards().find((n) => String(n.tableId) === String(tableId));
-        return c ? providerAnalysisText(provider, { results: roads(c) }) : "\u672A\u627E\u5230\u684C\u53F0";
+        return c ? provider === "counting" || provider === "parity" ? strategyFor(c).reason || "\u7B49\u5F85\u5BE6\u969B\u724C\u5F35" : providerAnalysisText(provider, { results: roads(c) }) : "\u672A\u627E\u5230\u684C\u53F0";
       },
       dispose: () => {
         running = false;

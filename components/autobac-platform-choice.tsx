@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { AUTOBAC_BRAND as brand, openBrandLink } from '@/lib/autobac-brand';
@@ -9,7 +8,6 @@ export function AutoBacPlatformChoice({ onChoose, onLogout }: { onChoose: (platf
   const { width, height } = useWindowDimensions();
   const mobile = width < 680;
   const short = height < 480;
-  const [layout,setLayout] = useState<GameLayout>('compatible');
   return <ScrollView style={s.page} contentContainerStyle={[s.content, mobile && s.mobileContent, short && s.shortContent]}>
     <View style={[s.top, mobile && s.topMobile]}>
       <View style={s.wordmark}><View style={s.mark}><Text style={s.markText}>AB</Text></View><View><Text style={s.brand}>{brand.name}</Text><Text style={s.subBrand}>{brand.chineseName}</Text></View></View>
@@ -20,16 +18,11 @@ export function AutoBacPlatformChoice({ onChoose, onLogout }: { onChoose: (platf
       <Text style={s.title}>選擇遊戲平台</Text>
       <Text style={s.subtitle}>同一個帳號，選擇 DG 或 MT。{ '\n' }進入後載入面板，按開始並確認後才會下注。</Text>
     </View>
-    <View style={s.layoutBlock}>
-      <View style={s.layoutRow}>{([
-        ['compatible','建議相容'], ['native','原生手機'], ['desktop','電腦版'],
-      ] as [GameLayout,string][]).map(([value,label])=><Pressable key={value} testID={`layout-${value}`} accessibilityRole="radio" accessibilityState={{checked:layout===value}} onPress={()=>setLayout(value)} style={[s.layoutOption,layout===value&&s.layoutSelected]}><Text style={s.layoutText}>{label}</Text></Pressable>)}</View>
-      <Text style={s.layoutHint}>{layout==='native'?'原生手機：MT已接線；DG手機引擎待核對，未核對前不安裝下注面板。':layout==='compatible'?'建議相容：手機MT使用原生版，DG使用已可用的電腦相容版。':'電腦版：兩平台都使用Desktop授權與既有電腦流程。'}</Text>
-    </View>
+    <Text style={s.layoutHint}>自動辨識手機／電腦；選平台後自動取得授權，不需貼 Token。</Text>
     <View style={[s.cards, short && s.cardsShort]}>
       {(['DG', 'MT'] as GamePlatform[]).map(target => {
         const dg = target === 'DG';
-        return <Pressable key={target} testID={dg ? 'choose-dg' : 'choose-mt'} accessibilityRole="button" accessibilityLabel={`進入 ${target}`} onPress={() => onChoose(target,layout)} style={({ pressed }) => [s.card, dg ? s.dgCard : s.mtCard, mobile && s.cardMobile, short && s.cardShort, pressed && s.pressed]}>
+        return <Pressable key={target} testID={dg ? 'choose-dg' : 'choose-mt'} accessibilityRole="button" accessibilityLabel={`進入 ${target}`} onPress={() => onChoose(target)} style={({ pressed }) => [s.card, dg ? s.dgCard : s.mtCard, mobile && s.cardMobile, short && s.cardShort, pressed && s.pressed]}>
           <View style={s.cardTop}><Text style={[s.platformTag, dg ? s.gold : s.blue]}>{dg ? 'DREAM GAMING' : 'MT LIVE'}</Text><MaterialIcons name="north-east" size={18} color={dg ? '#d3b985' : '#84bddd'} /></View>
           <View testID={`platform-logo-${target.toLowerCase()}`} accessibilityLabel={`${target} 平台標誌`} style={[s.logo, dg ? s.dgLogo : s.mtLogo, mobile && s.logoMobile, short && s.logoShort]}>
             <Text style={[s.logoText, dg ? s.gold : s.blue, mobile && s.logoTextMobile, short && s.logoTextShort]}>{target}</Text>
@@ -46,7 +39,7 @@ export function AutoBacPlatformChoice({ onChoose, onLogout }: { onChoose: (platf
   </ScrollView>;
 }
 const s = StyleSheet.create({
-  layoutBlock: {width:'100%',maxWidth:760,marginBottom:18}, layoutRow:{flexDirection:'row',gap:8},layoutOption:{flex:1,paddingVertical:10,borderRadius:8,borderWidth:1,borderColor:'#294859',backgroundColor:'#10202c',alignItems:'center'},layoutSelected:{borderColor:'#83bda9',backgroundColor:'#203c36'},layoutText:{color:'#d8e8e3',fontSize:11,fontWeight:'600'},layoutHint:{fontSize:10,lineHeight:17,color:'#9cb3bd',marginTop:8,textAlign:'center'},
+  layoutHint:{fontSize:10,lineHeight:17,color:'#9cb3bd',marginBottom:18,textAlign:'center'},
   page: { flex: 1, backgroundColor: '#09131d' }, content: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 34, alignItems: 'center', justifyContent: 'center' }, mobileContent: { paddingHorizontal: 16, paddingVertical: 24 }, shortContent: { paddingVertical: 12 },
   top: { width: '100%', maxWidth: 760, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 40 }, topMobile: { marginBottom: 26 },
   wordmark: { flexDirection: 'row', alignItems: 'center', gap: 10 }, mark: { width: 36, height: 36, borderWidth: 1, borderColor: '#2d526a', borderRadius: 10, backgroundColor: '#152936', alignItems: 'center', justifyContent: 'center' }, markText: { fontSize: 14, fontWeight: '800', color: '#9dc4d9', letterSpacing: -0.5 },

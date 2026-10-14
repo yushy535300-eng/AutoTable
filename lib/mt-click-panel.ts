@@ -41,6 +41,7 @@ type Preview = {
   pattern?: { label?: string };
   candidateIds?: string[];
   gameSnById?: Record<string, string>;
+  strategyReason?: string;
 };
 type PanelConfig = {
   rooms: 1 | 3 | 5 | 'all';
@@ -88,6 +89,8 @@ const PROVIDERS: ProviderOption[] = [
   { key: 'grok', label: 'Grok' },
   { key: 'meta', label: 'Meta AI' },
   { key: 'road', label: '傳統牌路' },
+  { key: 'counting', label: 'V38 四式算牌' },
+  { key: 'parity', label: '奇偶策略' },
 ];
 
 const PENDING_STATES = new Set<BetState>(['reserved', 'submitted', 'accepted', 'uncertain']);
@@ -599,6 +602,7 @@ export function mountMtClickPanel(
       events.append(article);
     };
     append(null, view.message || '—');
+    for (const p of view.previews) if (p.strategyReason) append(null, `${p.tableName}：${p.strategyReason}`);
     if (feedStatus) append(null, feedStatus);
     for (const issue of dataIssues) append(null, issue);
     for (const log of view.logs.slice().reverse()) append(log.at, log.text);
@@ -646,6 +650,7 @@ export function mountMtClickPanel(
     q('countdown').textContent = focus?.count == null ? '—' : String(focus.count);
     const seconds = typeof focus?.count === 'number' && Number.isFinite(focus.count) ? focus.count : null;
     q('ring').style.setProperty('--progress', `${seconds === null ? 0 : Math.max(0, Math.min(1, seconds / 20)) * 360}deg`);
+    q('focus-meta').title = focus?.strategyReason || '';
     q('focus-meta').textContent = focus?.ok
       ? `靴 ${focus.shoe || '—'} · 局 ${focus.round ?? '—'} · ${focus.pattern?.label || '牌路已驗證'} · ${providerName(current?.provider ?? draft.provider)}`
       : waitingReason(focus);

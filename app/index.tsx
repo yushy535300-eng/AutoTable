@@ -5,7 +5,7 @@ import { trpc } from '@/lib/trpc';
 import { detectGameDevice, resolveGameDevice, type GameDevice } from '@/lib/game-device';
 import { ensureDgMultiHall } from '@/lib/dg-auto-multihall';
 import { AutoBacGameHeader } from '@/components/autobac-game-header';
-import { AutoBacPlatformChoice, type GamePlatform, type GameLayout } from '@/components/autobac-platform-choice';
+import { AutoBacPlatformChoice, type GamePlatform } from '@/components/autobac-platform-choice';
 import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources } from '@/lib/dg-frame-installer';
 import { enterMtForeground, installMtFramePanel, ensureMtMultiplePage, mtFrameHasPending, mtFramePanelStatus, preserveMtFrameLedger, stopMtFramePanel } from '@/lib/mt-frame-installer';
 
@@ -91,18 +91,25 @@ export default function AutoBacScreen() {
   useEffect(() => {
     if (!auth || !gameUrl || selected !== 'DG') return;
     let attempts = 0, hallAttempts = 0;
-    const mode = gameDevice === 'Mobile' && /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop';
+    const mode = /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop';
     const tick = () => {
       const frame = frameRef.current;
       if (!frame) return;
       if (authInvalid) { stopDgFramePanel(frame); preserveDgFrameLedger(frame); return; }
+      // The compatible panel can display stopped/waiting state before MultiLobby
+      // finishes loading. Do not make its visibility depend on a hall click.
+      if (mode === 'desktop') {
+        const panel = dgFramePanelStatus(frame);
+        if (panel.installed || installDgFramePanel(frame, mode) === 'installed') setInstalled(true);
+      }
       const hall = ensureDgMultiHall(frame, mode);
       if (hall !== 'ready' && hall !== 'finished') {
         setMessage(hall === 'requested' ? '正在自動切到 DG 多桌廳…' : mode === 'mobile' ? '等待核對 DG 原生手機多桌引擎，尚未安裝下注面板…' : '等待 DG 原生多桌入口…');
         hallAttempts++;
-        if (mode === 'mobile' && (hall === 'unavailable' || hallAttempts >= 60)) setError('DG 原生手機引擎尚未完成版本核對；沒有下注。請返回選平台改用「建議相容」，或匯出手機腳本清單供後續核對。');
+        if (mode === 'mobile' && (hall === 'unavailable' || hallAttempts >= 60)) setError('平台回傳DG原生手機入口，但此引擎尚未核對；沒有下注。網站已自動要求相容版，請提供目前畫面供核對，不需手動選版型。');
         if (hall === 'unavailable' && mode === 'desktop') setError('未能確認 DG 多桌廳入口，尚未開始下注；請核對平台版本或重連。');
         if (hall === 'cross-origin') setError('DG 不在原同源前景入口，無法自動切廳或安裝面板。');
+        if (mode === 'desktop' && hallAttempts >= 90 && !dgFramePanelStatus(frame).installed) setError('DG遊戲引擎尚未就緒，面板無法掛載；請核對遊戲是否已正常開啟。');
         return;
       }
       const existing = dgFramePanelStatus(frame); preserveDgFrameLedger(frame);
@@ -176,9 +183,9 @@ export default function AutoBacScreen() {
   if (!auth) return <AccessScreen notice={notice} onAuthenticated={(sessionId, token, platform) => {
     setAuthInvalid(false); setNotice(''); setError(''); setSelected(null); launchCache.current.clear(); setAuth({ sessionId, token, platform });
   }} />;
-  if (!selected) return <AutoBacPlatformChoice onChoose={(target, layout: GameLayout = 'compatible') => { if (!authInvalid) {
+  if (!selected) return <AutoBacPlatformChoice onChoose={(target) => { if (!authInvalid) {
     const detected = detectGameDevice();
-    const device = resolveGameDevice(target, layout, detected);
+    const device = resolveGameDevice(target, 'compatible', detected);
     setGameDevice(device); setSelected(target); setDeparture(null);
   } }} onLogout={() => signOut()} />;
 
@@ -198,10 +205,10 @@ export default function AutoBacScreen() {
         ref: (node: HTMLIFrameElement | null) => { frameRef.current = node; }, src: gameUrl,
         title: `${selected} 真人遊戲`, referrerPolicy: 'no-referrer', allow: 'clipboard-read; clipboard-write; fullscreen; autoplay',
         style: { width: '100%', height: '100%', border: 0, background: '#000' },
-        onLoad: () => { if (!mt && frameRef.current) ensureDgMultiHall(frameRef.current, gameDevice === 'Mobile' && /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop'); },
+        onLoad: () => { if (!mt && frameRef.current) ensureDgMultiHall(frameRef.current, /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop'); },
       }) : <View style={s.loading}><View style={s.loadingMark}><Text style={s.loadingLetter}>{selected}</Text></View><Text style={s.loadingTitle}>正在進入 {selected}</Text><Text style={s.loadingText}>{message}</Text></View>}
       {mt && gameUrl ? <View testID="mt-native-status" style={s.mtStatus}><Text style={s.mtStatusText}>{installed ? 'MT 同源原生入口 · 完整面板已接通' : 'MT 同源原生入口 · 等待完整面板'}</Text></View> : null}
-      {selected === 'DG' && gameDevice === 'Mobile' && !installed && gameUrl ? <View style={[s.mtStatus,{bottom:46}]}><Pressable onPress={exportMobileSourceList}><Text style={s.toolText}>匯出 DG 手機腳本清單（不含憑證）</Text></Pressable></View> : null}
+      {selected === 'DG' && !installed && gameUrl ? <View testID="dg-install-status" style={s.mtStatus}><Text style={s.mtStatusText}>{message || 'DG 遊戲引擎載入中 · 尚未啟用自動操作'}</Text>{/^\/ddnewwap\//.test(gameUrl) ? <Pressable onPress={exportMobileSourceList}><Text style={s.toolText}>匯出 DG 手機腳本清單（不含憑證）</Text></Pressable> : null}</View> : null}
       {error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text><Pressable onPress={() => retry()} disabled={authInvalid} style={s.retry}><Text style={s.toolText}>重試</Text></Pressable></View> : null}
       {departure ? <View testID="pending-departure" style={s.pendingBox}>
         <Text style={s.errorText}>{mt ? 'MT 完整面板已停止新增操作，但仍有待確認／待結算或無法安全讀取的原生注單。請先在面板核對；切換、重連或登出不會取消平台已接受的下注。' : '已停止新增下注。仍有待結算／未核對注單，請先在面板核對後再切換、重連或登出。這些操作不會取消已接受的注單。'}</Text>

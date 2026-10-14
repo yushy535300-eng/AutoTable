@@ -1,4 +1,4 @@
-import { mtLaunchOrigin } from '../shared/mt-origins';
+import { mtLaunchOrigin, mtLaunchSearch } from '../shared/mt-origins';
 
 export type MtFrame = { contentWindow: any; contentDocument: Document | null };
 export type MtInstallResult = 'waiting' | 'installed' | 'cross-origin' | 'blocked' | 'failed';
@@ -166,15 +166,22 @@ export async function enterMtForeground(sessionId: string, gameUrl: string): Pro
       signal: controller.signal,
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.ok || typeof data.url !== 'string') throw new Error('MT 入口啟動失敗，請確認原平台授權與連線。');
+    if (!response.ok || !data?.ok || typeof data.url !== 'string') {
+      const reasons: Record<string,string> = {
+        session_invalid: '網站登入工作階段失效，請重新登入；不需停用白名單',
+        foreground_origin_required: '網站同源入口驗證失敗，請核對部署網址',
+        invalid_mt_launch: 'MT回傳的授權網址尚未被此版本支援，請更新網站入口',
+      };
+      const code = typeof data?.error === 'string' && Object.prototype.hasOwnProperty.call(reasons,data.error) ? data.error : 'entry_response_invalid';
+      throw new Error(`MT 入口啟動失敗（HTTP ${response.status} / ${code}）：${reasons[code] || '服務回應異常，請重試或核對部署版本'}。`);
+    }
     const url = new URL(data.url, window.location.origin);
     if (url.origin !== window.location.origin || !(url.pathname === PREFIX || url.pathname.startsWith(`${PREFIX}/`))) throw new Error('MT 入口回傳非預期來源，未載入遊戲。');
     // The native MT browser client reads its authorized token from location.search.
     // Keep it in this user's iframe, not in a public log or report attachment.
     const native=new URL(gameUrl);
     if(!mtLaunchOrigin(native))throw new Error('MT原生授權格式不符，未載入遊戲。');
-    url.searchParams.set('token',native.searchParams.get('token')!);
-    url.searchParams.set('lang','zhtw');
+    url.search = mtLaunchSearch(native).toString();
     return url.pathname + url.search + url.hash;
   } catch (error: any) {
     if (error?.name === 'AbortError') throw new Error('MT 入口逾時，請重試。');
