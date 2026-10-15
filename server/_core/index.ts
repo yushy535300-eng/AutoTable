@@ -9,6 +9,9 @@ import { appRouter, hasActiveTrackerSession, requireTrackerSession } from "../ro
 import { createContext } from "./context";
 import { randomUUID } from "node:crypto";
 import { adminPage } from "../admin-page";
+import { registerRiskAcknowledgementRoutes } from "../risk-acknowledgement-routes";
+import { withRiskAcknowledgementSummaries } from "../risk-acknowledgements";
+import { getPool } from "../whitelist";
 import { listWhitelist, upsertWhitelist, setWhitelistEnabled, extendWhitelist, deleteWhitelist } from "../whitelist";
 import { startDgRelay, getDgRelay, stopDgRelay, findDgRelayByToken, sweepIdleDgRelays } from "../dg-relay";
 import { startSaRelay, getSaRelay, stopSaRelay, sweepIdleSaRelays, ensureSaRelayShell } from "../sa-relay";
@@ -194,6 +197,7 @@ async function startServer() {
     if (!token || !adminSessions.has(token)) return res.status(401).json({ error: "管理員登入已失效" });
     next();
   };
+  registerRiskAcknowledgementRoutes(app, requireAdmin);
   const adminRedirect = (res: any, msg = "") =>
     res.redirect(303, "/admin" + (msg ? "?msg=" + encodeURIComponent(msg) : ""));
   app.get("/admin", async (req, res) => {
@@ -205,6 +209,8 @@ async function startServer() {
     let dbError = "";
     try {
       items = await listWhitelist();
+      try { const db=getPool(); if(db)items=await withRiskAcknowledgementSummaries(db, items); }
+      catch { items=items.map(item=>({...item, acknowledgement_error:true})); }
       console.log(`[MT Admin] whitelist loaded: ${items.length}`);
     } catch (e: any) {
       dbError = e?.message || "讀取失敗";

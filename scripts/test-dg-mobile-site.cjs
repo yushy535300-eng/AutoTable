@@ -160,6 +160,8 @@ function assertDgliMobileBody(raw) {
   const page = await context.newPage();
   const errors = [], externalRoutes = [], continuedExternal = [];
   const requests = [];
+  const riskAcknowledgements = [];
+  let failRiskRecording = false;
   let dgAuthorizationBody = null;
   let loginInputObservation = null;
   page.on("pageerror", (error) => errors.push(error.message));
@@ -200,6 +202,17 @@ function assertDgliMobileBody(raw) {
         return route.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: JSON.stringify({ code: 200, data: { url: "https://dg-offline.example/ddnewwap/V3.2.9/index.html?token=offline-mobile" } }) });
       }
       throw new Error(`unexpected TZ route: ${request.method()} ${url.pathname}`);
+    }
+
+    if (local && url.pathname === "/api/dg/risk-acknowledgements") {
+      const data = JSON.parse(request.postData());
+      assert.equal(data.sessionId, "offline-mobile-session");
+      assert.equal(data.checked, true);
+      assert.equal(data.statementVersion, "dg-risk-2026-10-15-v2");
+      assert.deepEqual(Object.keys(data).sort(), ["checked","eventId","sessionId","statementVersion"]);
+      assert.match(data.eventId, /^[0-9a-f-]{36}$/i);
+      riskAcknowledgements.push(data);
+      return route.fulfill({status:failRiskRecording?503:200,contentType:"application/json",body:JSON.stringify(failRiskRecording?{ok:false,error:"recording_unavailable"}:{ok:true,recordedAt:"2026-10-15T13:00:00.000Z"})});
     }
 
     if (local && url.pathname === "/api/dg/proxy/enter") {
@@ -331,6 +344,34 @@ function assertDgliMobileBody(raw) {
     const afterIdle = await frame.evaluate(() => ({ navCount: window.__MULTI_NAV_COUNT__, sent: window.__offlineMobile.sent.filter((packet) => Number(packet?.cmd) === 6).length }));
     assert.equal(afterIdle.navCount, 1, "later installer polling cannot click the mobile lobby twice");
     assert.equal(afterIdle.sent, 0, "idle panel remains unable to send cmd 6 without explicit user start/confirmation");
+
+    assert.equal(riskAcknowledgements.length, 0, "merely opening game never fabricates acknowledgement");
+    await frame.evaluate(()=>window.__DG_SINGLEPAGE__.start());
+    assert.equal(riskAcknowledgements.length, 0, "merely viewing disclosure is not acceptance");
+    assert.match(await frame.locator('.risk-record-notice').textContent(),/勾選後.*帳號.*勾選時間.*聲明版本.*回傳.*白名單後台.*留存紀錄/);
+    await frame.evaluate(()=>{const s=document.querySelector('#__dg_singlepage_panel__').shadowRoot;s.getElementById('ack').click();s.getElementById('ack').click();});
+    await page.waitForTimeout(100);assert.equal(riskAcknowledgements.length,0,'synthetic checkbox clicks are not user acknowledgements');
+    assert.equal(await frame.evaluate(()=>typeof window.__AUTOBAC_RISK_RECORDER__), 'undefined', 'callable recorder is not exposed in game page');
+    await frame.locator('#ack').check();
+    await frame.locator('#risk-record-state').filter({hasText:'勾選已記錄至管理後台'}).waitFor();
+    assert.equal(riskAcknowledgements.length,1);
+    await frame.locator('#ack').uncheck();await page.waitForTimeout(100);
+    assert.equal(riskAcknowledgements.length,1,"unchecking does not erase or fabricate a positive event");
+    await frame.locator('#ack').check();
+    await frame.locator('#risk-record-state').filter({hasText:'勾選已記錄至管理後台'}).waitFor();
+    assert.equal(riskAcknowledgements.length,2);
+    assert.notEqual(riskAcknowledgements[0].eventId,riskAcknowledgements[1].eventId,"each explicit positive check is its own event");
+    await frame.locator('#risk-cancel').click();
+    assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().running),false,"checking never starts a wager");
+    assert.equal(await frame.evaluate(()=>window.__offlineMobile.sent.filter(x=>Number(x.cmd)===6).length),0);
+    failRiskRecording=true;
+    await frame.evaluate(()=>window.__DG_SINGLEPAGE__.start());await frame.locator('#ack').check();
+    await frame.locator('#risk-record-state').filter({hasText:'勾選紀錄尚未同步'}).waitFor({timeout:12000});
+    assert.equal(riskAcknowledgements.length,5,"failed recording has only three bounded attempts");
+    assert.equal(new Set(riskAcknowledgements.slice(2).map(x=>x.eventId)).size,1,"retry retains same UUID");
+    assert.equal(await frame.locator('#risk-confirm').isEnabled(),true,"recording adds no new start gate");
+    await frame.locator('#risk-cancel').click();failRiskRecording=false;
+    console.log('PASS mobile full site acknowledgement: active session bridge, checkbox-only events, cancel retains event, bounded retry/no false-success, and zero wagers. Offline only.');
 
     const header=page.getByTestId('autobac-game-header');
     await page.waitForFunction(() => [...document.querySelector('[data-testid="autobac-header-logo"]').querySelectorAll('img')].some(img=>img.complete&&img.naturalWidth===512));

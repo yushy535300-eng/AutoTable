@@ -9,6 +9,7 @@ import { AutoBacPlatformChoice, type GamePlatform } from '@/components/autobac-p
 import { createDgOperationCapture, captureDgViewport } from '@/lib/dg-operation-capture';
 import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources, dgFrameInstallMode } from '@/lib/dg-frame-installer';
 import autoBacBuild from '@/public/autobac-version.json';
+import { createDgRiskRecorder, bindDgRiskRecorder, unbindDgRiskRecorder } from '@/lib/dg-risk-recorder';
 
 type Auth = { sessionId: string; token: string; platform: 'TZ' | 'OFA' };
 type Departure = 'choose' | 'logout' | 'retry';
@@ -93,6 +94,7 @@ export default function AutoBacScreen() {
   useEffect(() => {
     if (!auth || !gameUrl || selected !== 'DG') return;
     let attempts = 0, hallAttempts = 0;
+    const riskRecorder = createDgRiskRecorder(auth.sessionId);
     const requestedMode = /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop';
     const tick = () => {
       const frame = frameRef.current;
@@ -100,6 +102,7 @@ export default function AutoBacScreen() {
       const mode = dgFrameInstallMode(frame, requestedMode);
       if (authInvalid) { stopDgFramePanel(frame); preserveDgFrameLedger(frame); return; }
       if (captureRunning) { stopDgFramePanel(frame); return; }
+      bindDgRiskRecorder(frame, riskRecorder);
       // The compatible panel can display stopped/waiting state before MultiLobby
       // finishes loading. Do not make its visibility depend on a hall click.
       if (mode === 'desktop') {
@@ -119,14 +122,17 @@ export default function AutoBacScreen() {
       const existing = dgFramePanelStatus(frame); preserveDgFrameLedger(frame);
       if (existing.installed) { setInstalled(true); setError(''); setMessage(existing.connected ? (frame.contentWindow?.__DG_SINGLEPAGE__?.status?.().running ? '百家工程師執行中；請核對正式接受與結算' : '面板已接上桌卡；自動下注已停止，不會自行恢復') : '面板已載入，但原生桌卡尚未接通；未送單'); return; }
       const outcome = installDgFramePanel(frame, mode);
-      if (outcome === 'installed') { setInstalled(true); setError(''); return; }
+      if (outcome === 'installed') { bindDgRiskRecorder(frame, riskRecorder); setInstalled(true); setError(''); return; }
       if (++attempts < 4) return;
       if (outcome === 'cross-origin') setError('DG 目前不是可存取的原同源入口，面板未安裝；請確認原平台授權及入口。');
       else if (outcome === 'blocked') setError('DG 頁面阻止面板載入，尚未啟用自動操作。');
       else if (attempts >= 90) setError('DG 載入逾時，尚未偵測到遊戲畫面。請檢查網路或重試。');
     };
     tick(); const timer = setInterval(tick, 1000);
-    return () => { clearInterval(timer); stopDgFramePanel(frameRef.current); };
+    return () => {
+      clearInterval(timer); stopDgFramePanel(frameRef.current);
+      unbindDgRiskRecorder(frameRef.current, riskRecorder);
+    };
   }, [auth, gameUrl, authInvalid, selected, gameDevice, captureRunning]);
 
   useEffect(() => {

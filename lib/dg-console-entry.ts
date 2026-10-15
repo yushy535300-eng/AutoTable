@@ -1,3 +1,4 @@
+import { DG_RISK_STATEMENT } from '../shared/dg-risk-statement';
 import { createDgUsageHistory, usageHistoryInPeriod } from './dg-usage-history';
 import { dgBetSummary } from './dg-bet-summary';
 import { createDgSessionTimer, parseDurationMinutes, formatDuration } from './dg-session-timer';
@@ -600,6 +601,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   function requestStart(testOnce=false){
     if(running||busy)return;
     riskApproved=false;riskTestOnce=testOnce;riskReturnFocus=shadow.activeElement as HTMLElement|null;
+    q('risk-record-state').textContent='';
     q('risk-doubling-warning').hidden=stakingMode()!=='doubling';
     q('risk-doubling-warning').textContent=`使用倍投法，請設定止盈與止損。${!q('take-profit').value||!q('stop-loss').value?'目前止盈／止損尚未全部設定，請先至設定頁確認。':'請確認目前止盈與止損金額符合你的設定。'}`;
     q('risk-time-summary').textContent=(()=>{try{const n=parseDurationMinutes(q('duration-minutes').value);return n?`自動停止：${n} 分鐘，確認開始後計時`:'自動停止：不限時；確認開始後顯示本次使用時間';}catch(e){return (e as Error).message;}})();
@@ -607,7 +609,11 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     q('ack').checked=false;q('risk-confirm').disabled=true;q('risk-dialog').hidden=false;fitPanel();q('ack').focus();
   }
   function cancelRisk(){q('risk-dialog').hidden=true;riskApproved=false;fitPanel();riskReturnFocus?.focus();}
-  q('ack').onchange=()=>{q('risk-confirm').disabled=!q('ack').checked;};
+  q('ack').onchange=()=>{
+    q('risk-confirm').disabled=!q('ack').checked;
+    if(!q('ack').checked)q('risk-record-state').textContent='已取消勾選；先前已記錄的勾選不會抹除';
+    else if(q('ack').dataset.autobacRiskRecording!=='connected')q('risk-record-state').textContent='未連接網站紀錄服務，勾選尚未同步至後台';
+  };
   q('risk-cancel').onclick=cancelRisk;
   q('risk-confirm').onclick=()=>{if(!q('ack').checked)return;riskApproved=true;q('risk-dialog').hidden=true;start(riskTestOnce);if(running)showPage('overview');};
   q('risk-dialog').onkeydown=(e:KeyboardEvent)=>{

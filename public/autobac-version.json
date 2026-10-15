@@ -1,5 +1,5 @@
 {
-  "version": "3.2.9-dg-auto-logo",
+  "version": "3.2.10-dg-risk-records",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -26,5 +26,12 @@
   "selectText": "16px-mobile; fixed-height-padding-corrected; short-captions",
   "brandLogo": "same-approved-image-access-choice-header; original-mark-size",
   "accessCaptions": "separate-single-line; larger-mobile-font; white-login-check",
-  "usageHistory": "new-start-resets; previous-duration-and-settled-pnl; late-settlement-original-run; browser-account-scoped"
+  "usageHistory": "new-start-resets; previous-duration-and-settled-pnl; late-settlement-original-run; browser-account-scoped",
+  "riskAcknowledgements": {
+    "enabled": true,
+    "scope": "whitelist-account",
+    "event": "checkbox_checked",
+    "statementVersion": "dg-risk-2026-10-15-v2",
+    "noIpOrCredentials": true
+  }
 }
