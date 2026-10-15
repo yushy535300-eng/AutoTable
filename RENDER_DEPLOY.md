@@ -1,17 +1,16 @@
-# AutoBac v3.2.2 部署
+# AutoBac v3.2.4 部署
 
-詳細步驟：[AUTOBAC-V3.2.2-DEPLOY.md](./AUTOBAC-V3.2.2-DEPLOY.md)。這是完整網站更新，不是 Console 或舊只讀診斷版。
+詳細說明：[AUTOBAC-V3.2.4-DEPLOY.md](./AUTOBAC-V3.2.4-DEPLOY.md)。本次修正MT傳輸接線與手機輸入防放大，**尚未證明MT上游限制解除**。
 
-1. 備份原 GitHub 專案，解壓網站 ZIP，把內容放在原專案根目錄，不要只上傳 ZIP。
-2. 沿用原 Render **Docker Web Service**、分支與網址；`Dockerfile Path=./Dockerfile`，Docker Command 留空。
-3. 保留原 `DATABASE_URL`、`ADMIN_PASSWORD` 及其他環境變數。`TZ_WHITELIST_ENABLED=true`，不要刪資料庫或停用白名單。
-4. 提交程式，部署最新 commit，等服務完成部署。
-5. 確認 `/api/health` 可用，`/autobac-version.json` 顯示 **`3.2.2-dg-mobile-v329`**。
-6. 關閉舊遊戲頁，重新開啟網站、用原帳號登入、選 DG 或 MT。無版型選單，不需 Console；初始停止。
+1. 先停止新增下注並核對待結算注單，備份GitHub原專案。
+2. 解壓完整網站ZIP，將內容更新到原專案根目錄，不是只上傳ZIP，不多一層資料夾。
+3. Render沿用原 **Docker Web Service**：`Dockerfile Path=./Dockerfile`，Docker Command留空。
+4. 保留原資料庫和全部環境變數，`TZ_WHITELIST_ENABLED=true`；不要刪資料庫或關閉白名單。
+5. 提交更新並部署，確認 `/api/health` 正常、`/autobac-version.json` 顯示 **`3.2.4-mt-transport-zoom`**。
+6. 關閉舊遊戲頁，重新依原白名單登入選DG或MT。初始停止，不需Console。
+7. MT若仍限制，由說明內匯出安全連線診斷；新版後端日誌 `[AutoBac MT entry]` 只記HTTP與限制狀態，無授權網址。
 
-DG手機自動要求原生Mobile，僅允許已核對的V3.2.9原生多桌builder；電腦維持Desktop。未知版本、缺資料或未能核對接受／結算不自動送單／推進。MT代理訪問限制仍未解除，這次DG更新不代表MT已修好。
-
-若原服務為Native Node，沿用原型態：
+原服務若為Native Node，沿用：
 
 ```text
 Build Command: pnpm install --frozen-lockfile && pnpm build
@@ -19,4 +18,4 @@ Start Command: pnpm start
 Health Check Path: /api/health
 ```
 
-禁止公開 `.env`、帳密、Token、Cookie、HAR、資料庫或使用者流程紀錄。離線回歸不等同真機自動下注已驗證。
+金鑰不需放進網站，不公開帳密、Token、Cookie、HAR、資料庫或使用者流程記錄。此次沒有代部署或修改Render服務。

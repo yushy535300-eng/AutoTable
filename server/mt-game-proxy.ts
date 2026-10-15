@@ -1,4 +1,5 @@
 import {isMtRestrictedHtml} from '../shared/mt-access-page';
+import {withPageZoomLock} from '../shared/page-zoom-lock';
 import type { Express, Request, Response } from "express";
 import { randomBytes, createHash } from "node:crypto";
 import { Readable } from "node:stream";
@@ -137,8 +138,13 @@ function upstreamHeaders(req: Request, session: MtProxySession): Headers {
     const value = header(req, name);
     if (value) headers.set(name, value);
   }
-  headers.set("origin", session.upstreamOrigin);
-  headers.set("referer", `${session.upstreamOrigin}/`);
+  // A document GET is a navigation, not a CORS XHR. The old iframe does not
+  // manufacture Origin/Referer. Asset requests retain their vendor context.
+  const route = pathForRequest(req.originalUrl || req.url || "");
+  if (route?.pathname !== "/") {
+    if (header(req, "origin")) headers.set("origin", session.upstreamOrigin);
+    headers.set("referer", `${session.upstreamOrigin}/`);
+  }
   const cookies = upstreamCookieHeader(session.upstreamCookies);
   if (cookies) headers.set("cookie", cookies);
   return headers;
@@ -194,10 +200,18 @@ export function mtProxyAssetUrl(value: string, upstreamOrigin: string = MT_UPSTR
 
 /** Rewrite root-relative module/CSS strings without turning arbitrary hosts into proxy targets. */
 export function rewriteMtAssetText(source: string, upstreamOrigin: string = MT_UPSTREAM_ORIGIN): string {
+  // Verified official mobile source derives game/chat socket hosts from this
+  // exact expression. On Render it would produce a1.onrender.net/game/ws.
+  // Restore the authorized vendor family only; never rewrite arbitrary host
+  // reads, socket command strings, authentication bodies, or unknown origins.
+  if ((MT_TRUSTED_ORIGINS as readonly string[]).includes(upstreamOrigin)) {
+    const family = new URL(upstreamOrigin).hostname.split(".")[1];
+    source = source.replace(/\b(?:window\.)?location\.host\.split\((['"])\.\1\)\s*\[\s*1\s*\]/g, JSON.stringify(family));
+  }
   return source.replace(/(["'])(https:\/\/gs[ab1]\.ofalive99\.net(?:\/[^"'\\\s]*)?|\/\/gs[ab1]\.ofalive99\.net(?:\/[^"'\\\s]*)?|\/(?!\/|mt-game(?:\/|$))[^"'\\\s]*)\1/gi, (_whole, quote: string, url: string) => {
     // Protocol action paths (e.g. /api/v1/member/me) are not browser assets.
     // Rewriting every slash-prefixed string would corrupt native WSS commands.
-    if (url.startsWith("/") && !url.startsWith("//") && !/^\/(?:assets|static|images?|img|fonts|js|css|media|video|audio|res|resource|build)(?:\/|$)/i.test(url) && !/\.(?:m?js|css|json|wasm|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|mp4|webm|flv|mp3|ogg|html?)(?:[?#]|$)/i.test(url)) return _whole;
+    if (url.startsWith("/") && !url.startsWith("//") && !/^\/(?:assets|static|images?|img|fonts|js|css|media|video|audio|voice|res|resource|build)(?:\/|$)/i.test(url) && !/\.(?:m?js|css|json|wasm|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|otf|mp4|webm|flv|mp3|ogg|wav|html?)(?:[?#]|$)/i.test(url)) return _whole;
     return `${quote}${mtProxyAssetUrl(url, upstreamOrigin)}${quote}`;
   });
 }
@@ -212,9 +226,9 @@ export function rewriteMtHtml(source: string, ledgerKey?: string, upstreamOrigin
   const restricted=isMtRestrictedHtml(source);
   const accessMarker='<script>Object.defineProperty(window,"__AUTOBAC_MT_ACCESS_RESTRICTED__",{value:true,writable:false,configurable:false});</script>';
   const injection = `${bootstrap}<base href="${MT_GAME_PREFIX}/">${restricted?accessMarker:MT_CONSOLE_TAG}`;
-  if (/<head(?:\s[^>]*)?>/i.test(html)) return html.replace(/<head(?:\s[^>]*)?>/i, (tag) => `${tag}${injection}`);
-  if (/<html(?:\s[^>]*)?>/i.test(html)) return html.replace(/<html(?:\s[^>]*)?>/i, (tag) => `${tag}<head>${injection}</head>`);
-  return `<!doctype html><head>${injection}</head>${html}`;
+  if (/<head(?:\s[^>]*)?>/i.test(html)) return withPageZoomLock(html.replace(/<head(?:\s[^>]*)?>/i, (tag) => `${tag}${injection}`));
+  if (/<html(?:\s[^>]*)?>/i.test(html)) return withPageZoomLock(html.replace(/<html(?:\s[^>]*)?>/i, (tag) => `${tag}<head>${injection}</head>`));
+  return withPageZoomLock(`<!doctype html><head>${injection}</head>${html}`);
 }
 
 function forwardResponseHeaders(upstream: globalThis.Response, res: Response): void {
@@ -296,7 +310,7 @@ export function registerMtGameProxy(options: RegisterMtGameProxyOptions): void {
     }
     const target = upstreamUrl(session, route);
     try {
-      const upstream = await fetchImpl(target, { method: req.method, headers: upstreamHeaders(req, session), redirect: "manual" });
+      const upstream = await fetchImpl(target, { method: req.method, headers: upstreamHeaders(req, session), redirect: "manual", signal: route.pathname === '/' ? AbortSignal.timeout(25000) : undefined });
       retainUpstreamCookies(session, upstream);
       const location = upstream.headers.get("location");
       if (location && upstream.status >= 300 && upstream.status < 400) {
@@ -313,12 +327,14 @@ export function registerMtGameProxy(options: RegisterMtGameProxyOptions): void {
       if (req.method === "HEAD" || upstream.status === 204 || upstream.status === 304 || !upstream.body) return res.end();
       if (rewrite) {
         const source = await upstream.text();
+        if (route.pathname === '/') console.info('[AutoBac MT entry]', JSON.stringify({ stage:'document', status:upstream.status, vendor:new URL(session.upstreamOrigin).hostname, html, restricted:isMtRestrictedHtml(source) }));
         if (html) return res.type("html").send(rewriteMtHtml(source, session.ledgerKey, session.upstreamOrigin));
         return res.type(contentType || "text/plain").send(rewriteMtAssetText(source, session.upstreamOrigin));
       }
       Readable.fromWeb(upstream.body as never).pipe(res);
     } catch {
       // Never echo the URL, launch token, upstream cookie, or low-level network error.
+      if (route.pathname === '/') console.warn('[AutoBac MT entry]', JSON.stringify({stage:'document',status:502,error:'upstream_unavailable'}));
       if (!res.headersSent) res.status(502).type("text").send("MT foreground upstream unavailable");
       else res.end();
     }

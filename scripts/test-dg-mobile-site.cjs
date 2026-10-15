@@ -307,6 +307,26 @@ function assertDgliMobileBody(raw) {
     assert.equal(afterIdle.navCount, 1, "later installer polling cannot click the mobile lobby twice");
     assert.equal(afterIdle.sent, 0, "idle panel remains unable to send cmd 6 without explicit user start/confirmation");
 
+    const header=page.getByTestId('autobac-game-header');
+    await frame.evaluate(()=>window.__HEADER_DOCUMENT_MARKER__='same-loaded-game');
+    for(const size of [{width:320,height:700},{width:390,height:844},{width:440,height:894},{width:1440,height:960}]){
+      await page.setViewportSize(size);await page.waitForTimeout(180);
+      const bounds=await header.boundingBox();assert.equal(Math.round(bounds.height),56);assert.equal(Math.round(bounds.y),0);
+      assert.equal(await header.getByRole('button').count(),4,'Exactly four direct actions, not a dropdown');
+      assert(await header.evaluate(node=>node.scrollWidth<=node.clientWidth+1),'No header overflow at '+size.width);
+      const boxes=await Promise.all(['header-platform','header-reconnect','header-help','header-logout'].map(id=>page.getByTestId(id).boundingBox()));
+      assert(boxes.every(box=>box&&Math.abs(box.y-boxes[0].y)<1&&box.x>=0&&box.x+box.width<=size.width+1),'Buttons fit one visible row');
+      if(size.width<850)assert(boxes.every(box=>box.width>=44&&box.height>=44),'Mobile buttons are 44px touch targets');
+      for(const id of ['header-collapse-mobile','header-collapse','header-line','header-register','header-diagnostics','header-record'])assert.equal(await header.getByTestId(id).count(),0);
+      assert.equal(await page.locator('[aria-label="展開頂部資訊"]').count(),0,'No expanded/collapsed header state');
+    }
+    await page.setViewportSize({width:440,height:894});
+    await page.getByTestId('header-help').click();
+    await page.getByTestId('autobac-help').waitFor();
+    await page.getByRole('button',{name:'關閉使用說明',exact:true}).click();
+    assert.equal(await frame.evaluate(()=>window.__HEADER_DOCUMENT_MARKER__),'same-loaded-game','Help never reloads game');
+    assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().running),false,'Help never starts automation');
+    await page.getByTestId('header-help').click();
     const downloadPromise = page.waitForEvent("download");
     await page.getByTestId("header-diagnostics").click();
     const download = await downloadPromise;
@@ -317,6 +337,9 @@ function assertDgliMobileBody(raw) {
     assert.match(diagnostic, /"platform":\s*"DG"/, "diagnostic identifies DG without exporting credentials");
     assert.match(diagnostic, /ddnewwap\/V3\.2\.9\/js\/bundle\.js/, "diagnostic includes only the public mobile bundle path");
     for (const forbidden of [NATIVE_TOKEN, NATIVE_SECRET, "offline-mobile"]) assert.equal(diagnostic.includes(forbidden), false, `diagnostic must not export ${forbidden}`);
+    await page.getByTestId('autobac-help').waitFor({state:'detached'});
+    assert.equal(await page.getByTestId('autobac-help').count(),0,'Selecting a tool closes the guide, not the game');
+    assert.equal(await frame.evaluate(()=>window.__HEADER_DOCUMENT_MARKER__),'same-loaded-game');
 
     fs.mkdirSync(path.dirname(SCREENSHOT), { recursive: true });
     await page.screenshot({ path: SCREENSHOT, fullPage: true });

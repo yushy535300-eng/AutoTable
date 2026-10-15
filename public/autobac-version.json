@@ -1,11 +1,15 @@
 {
-  "version": "3.2.2-dg-mobile-v329",
+  "version": "3.2.4-mt-transport-zoom",
+  "header": "fixed-single-row; platform-reconnect-help-logout; no-collapse-no-dropdown",
+  "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": ["DG", "MT"],
   "dgMobileNativeBundle": "V3.2.9",
   "dgMobileRuntimeGate": "exact-ei-Ki-builder-source-fingerprint",
   "dgPhoneProfile": "Mobile",
   "strategyMenuCount": 8,
   "initialState": "stopped",
-  "mtProxyAccess": "unresolved-upstream-restriction",
-  "verification": "native-public-source-and-offline-regression; live-user-device-auto-bet-unverified"
+  "mtTransportFixes": ["vendor-host-family", "marked-foreground-mobile-navigation", "voice-wav-assets", "document-navigation-headers"],
+  "mtProxyAccess": "live-authorized-entry-requires-user-verification; restriction-not-proven-resolved",
+  "pageScale": "fixed-viewport-1; mobile-text-fields-16px; OS-accessibility-zoom-not-controlled",
+  "verification": "native-public-source-and-offline-regression; live-MT-device-unverified"
 }

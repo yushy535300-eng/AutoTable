@@ -56,8 +56,8 @@ describe('native mobile game launch', () => {
     await uses.get('/mt-game')({method:'GET',originalUrl:'/mt-game/',headers:{cookie}},document);
     const [url,options]=upstream.mock.calls[0];
     expect(String(url)).toBe('https://gsb.ofalive99.net/?token=phone-native&lang=zhtw');
-    expect((options!.headers as Headers).get('origin')).toBe(MT_MOBILE_ORIGIN);
-    expect((options!.headers as Headers).get('referer')).toBe(MT_MOBILE_ORIGIN+'/');
+    expect((options!.headers as Headers).get('origin')).toBeNull();
+    expect((options!.headers as Headers).get('referer')).toBeNull();
     expect(document.body).toContain('/mt-game/assets/mobile.js');
     const wrong=response();
     await uses.get('/mt-game')({method:'GET',originalUrl:'/mt-game/?token=foreign&lang=zhtw',headers:{cookie}},wrong);

@@ -91,6 +91,28 @@ async function mobileDOM(page,options){
    if(options.badAmount){assert.equal(await page.evaluate(()=>events.some(e=>e.startsWith('cancel:'))),false);assert.equal(await page.evaluate(()=>window.__MT_NATIVE_CLICK__.view().bets[0]?.state),'uncertain');}
    await page.close();passed++;
   }
+  {
+   // Real parent/iframe relationship on the deployed host, not a top-level
+   // vendor-host fixture. All network and accepts remain anonymous/offline.
+   const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+   const origin='https://autotable-o6a2.onrender.com';
+   const marker='<script>Object.defineProperty(window,"__AUTOBAC_MT_FOREGROUND__",{value:Object.freeze({kind:"autobac-mt-foreground-v1",version:1,pathPrefix:"/mt-game"}),writable:false,configurable:false});</script>';
+   await page.route('**/*',route=>{
+    const url=route.request().url();
+    if(url===origin+'/offline-shell')return route.fulfill({contentType:'text/html',body:'<iframe src="/mt-game/" style="width:390px;height:800px;border:0"></iframe>'});
+    if(url===origin+'/mt-game/')return route.fulfill({contentType:'text/html',body:html(6,{}).replace('<meta charset=',marker+'<meta charset=')});
+    return route.abort();
+   });
+   await page.goto(origin+'/offline-shell');
+   const frame=page.frames().find(f=>f.url()===origin+'/mt-game/');assert(frame,'marked same-origin iframe must exist');
+   assert.equal(await frame.evaluate(()=>Object.isFrozen(window.__AUTOBAC_MT_FOREGROUND__)&&Object.getOwnPropertyDescriptor(window,'__AUTOBAC_MT_FOREGROUND__')?.writable===false),true,'fixture must contain the real immutable marker before console installation');
+   await mobileDOM(frame,{});await frame.evaluate(code);await frame.waitForFunction(()=>!!window.__MT_NATIVE_CLICK__);
+   assert.equal(await frame.evaluate(()=>window.__MT_AUTOBAC_DIAG__.report().tableViewport.tables.length),6,'Mobile mulitScroll enhanced navigator must be installed on Render');
+   assert.equal(await frame.evaluate(()=>!!window.__MT_NAV_PATCH__),true);
+   await start(frame,{rooms:3});await frame.waitForFunction(()=>window.__MT_NATIVE_CLICK__.view().bets.filter(b=>b.state==='accepted').length===3);
+   assert.equal(await frame.evaluate(()=>events.filter(e=>e.startsWith('confirm:')).length),3,'native three-table confirms on marked Render iframe');
+   await frame.evaluate(()=>window.__MT_NATIVE_CLICK__.stop());await page.close();passed++;
+  }
   console.log(`PASS ${passed} MT Mobile full Chromium scenarios: footer chip→native side→green check→source proof→accepted/settled, 1/3/5/all, cross-room doubling, stop/queue ownership. All requests intercepted; no real login or bet.`);
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

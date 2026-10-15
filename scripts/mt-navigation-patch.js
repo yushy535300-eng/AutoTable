@@ -1,5 +1,11 @@
 function installMtNavigationPatch(W, makeNavigator) {
-  if(!/(^|\.)ofalive99\.net$/i.test(W.location.hostname)){
+  let foreground=false;
+  try {
+    const marker=W.__AUTOBAC_MT_FOREGROUND__,descriptor=Object.getOwnPropertyDescriptor(W,'__AUTOBAC_MT_FOREGROUND__');
+    foreground=!!marker&&Object.isFrozen(marker)&&!!descriptor&&descriptor.value===marker&&!descriptor.writable&&!descriptor.configurable&&marker.kind==='autobac-mt-foreground-v1'&&marker.version===1&&marker.pathPrefix==='/mt-game'&&(W.location.pathname==='/mt-game'||W.location.pathname.startsWith('/mt-game/'))&&W.parent!==W&&W.parent.location.origin===W.location.origin;
+  } catch { foreground=false; }
+  const native=W.location.protocol==='https:'&&['gsa.ofalive99.net','gsb.ofalive99.net','gs1.ofalive99.net'].includes(W.location.hostname);
+  if(!foreground&&!native){
     W.console.error('[AutoBac MT] 請在MT頁面本身執行定位修補。');return null;
   }
   const D=W.document,diag=W.__MT_AUTOBAC_DIAG__;

@@ -118,7 +118,7 @@ export default function AutoBacScreen() {
       if (hall !== 'ready' && hall !== 'finished') {
         setMessage(hall === 'requested' ? '正在自動切到 DG 多桌廳…' : mode === 'mobile' ? '等待 DG 手機原生多桌與已核對builder就緒，尚未送單…' : '等待 DG 原生多桌入口…');
         hallAttempts++;
-        if (mode === 'mobile' && (hall === 'unavailable' || hallAttempts >= 90)) setError('DG手機多桌或原生builder未就緒／版本未核對，沒有下注；請按上方「診斷」匯出安全連線資料，不需提供憑證。');
+        if (mode === 'mobile' && (hall === 'unavailable' || hallAttempts >= 90)) setError('DG手機多桌或原生builder未就緒／版本未核對，沒有下注；請按上方「說明」內的「匯出診斷」，不需提供憑證。');
         if (hall === 'unavailable' && mode === 'desktop') setError('未能確認 DG 多桌廳入口，尚未開始下注；請核對平台版本或重連。');
         if (hall === 'cross-origin') setError('DG 不在原同源前景入口，無法自動切廳或安裝面板。');
         if (mode === 'desktop' && hallAttempts >= 90 && !dgFramePanelStatus(frame).installed) setError('DG遊戲引擎尚未就緒，面板無法掛載；請核對遊戲是否已正常開啟。');
@@ -233,7 +233,7 @@ export default function AutoBacScreen() {
       stopAndPreserve();
       captureRef.current?.stop();captureRef.current=createDgOperationCapture(frame.contentWindow,window);
       setCaptureStatus(captureRef.current.status());setCaptureExpanded(false);setCaptureRunning(true);setError('');
-    } catch { captureRef.current?.stop();setCaptureRunning(false);setError('DG 記錄器未能掛上原生事件，沒有自動操作；請按「診斷」匯出當前狀態。'); }
+    } catch { captureRef.current?.stop();setCaptureRunning(false);setError('DG 記錄器未能掛上原生事件，沒有自動操作；請在「說明」內匯出診斷。'); }
   }
   function exportMobileSourceList() {
     const data = exportDgFrameMobilePublicSources(frameRef.current);
@@ -263,7 +263,7 @@ export default function AutoBacScreen() {
         }; }
       }
     } catch { /* keep a credential-free inaccessible status */ }
-    const data = {version: '3.2.1-mobile-capture', platform: selected, requestedDevice: gameDevice, outerViewport:captureDgViewport(window), hasError: !!error, errorCode: error.match(/session_invalid|foreground_origin_required|invalid_mt_launch|entry_response_invalid/)?.[0] || null, runtime};
+    const data = {version: '3.2.3-fixed-header', platform: selected, requestedDevice: gameDevice, outerViewport:captureDgViewport(window), hasError: !!error, errorCode: error.match(/session_invalid|foreground_origin_required|invalid_mt_launch|entry_response_invalid/)?.[0] || null, runtime};
     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob), node = document.createElement('a');
     node.href = url; node.download = `AutoBac-${selected}-connection-diagnostic.json`; node.click();

@@ -799,6 +799,11 @@ SOFTWARE.
 #panel.compact.mini .compact-actions button{height:31px;min-width:0;font-size:9px}
 #panel.compact.mini .steps,#panel.compact.mini .step-labels,#panel.compact.mini .metrics,
 #panel.compact.mini #cards-result,#panel.compact.mini #chart-wrap,#panel.compact.mini #table-strip{display:none}
+/* iOS focuses sub-16px controls by zooming the whole viewport. This must live
+   inside the shared shadow-root CSS as document styles cannot reach it. */
+@media(pointer:coarse){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]),textarea,select{font-size:16px!important}
+}
 `;
 
   // lib/dg-panel-density.ts

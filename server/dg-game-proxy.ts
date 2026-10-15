@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { ensureDgRelayShell, type DgRelay } from "./dg-relay";
 import { DG_REPORT_BRIDGE_SCRIPT } from "./dg-report-bridge";
+import { withPageZoomLock } from '../shared/page-zoom-lock';
 
 type ProxySession = {
   sessionId: string;
@@ -81,8 +82,8 @@ DG_REPORT_BRIDGE_SCRIPT +
     page = page.split(upstreamOrigin).join("");
     page = page.split(`//${host}`).join("");
   } catch {}
-  if (/<head(?:\s[^>]*)?>/i.test(page)) return page.replace(/<head(?:\s[^>]*)?>/i, m => m + hook);
-  return hook + page;
+  if (/<head(?:\s[^>]*)?>/i.test(page)) return withPageZoomLock(page.replace(/<head(?:\s[^>]*)?>/i, m => m + hook));
+  return withPageZoomLock(hook + page);
 }
 
 function copyUpstreamHeaders(req: Request, origin: string) {

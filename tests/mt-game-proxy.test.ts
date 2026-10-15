@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { runInNewContext } from 'node:vm';
 import {
   MT_GAME_PREFIX,
   MT_UPSTREAM_ORIGIN,
@@ -73,6 +74,21 @@ describe('MT foreground proxy boundaries', () => {
     expect(patched).toContain('wss://a1.ofalive99.net/game/ws');
     expect(patched).toContain('"/mt-game/assets/main.js"');
     expect(patched).toContain('"/mt-game/images/chip.png"');
+    expect(rewriteMtAssetText('const voice="/voice/donateVoice.wav"; const bet="/api/v1/bet";')).toBe('const voice="/mt-game/voice/donateVoice.wav"; const bet="/api/v1/bet";');
+  });
+
+  it('preserves the official native host family under Render for game/chat and images', () => {
+    // Exact structure observed in the public MT mobile source, with no account data.
+    const source = `var setWebSocketApiUrl$1=()=>{var e=location.host.split(".")[1],a="wss://a1."+e+".net/game/ws";if(e)var a="wss://a1."+e+".net/game/ws";else var a="wss://a1.ofalive99.net/game/ws";return a};var vendorFamily=()=>window.location.host.split('.')[1];`;
+    const context = { location: { host: 'autotable-o6a2.onrender.com' }, window: { location: { host: 'autotable-o6a2.onrender.com' } } };
+    expect(runInNewContext(source + 'setWebSocketApiUrl$1()', context)).toBe('wss://a1.onrender.net/game/ws');
+    for (const origin of ['https://gsa.ofalive99.net','https://gsb.ofalive99.net','https://gs1.ofalive99.net']) {
+      const patched = rewriteMtAssetText(source, origin);
+      expect(runInNewContext(patched + 'setWebSocketApiUrl$1()', context)).toBe('wss://a1.ofalive99.net/game/ws');
+      expect(runInNewContext(patched + 'vendorFamily()', context)).toBe('ofalive99');
+      expect(rewriteMtAssetText(patched, origin)).toBe(patched);
+    }
+    expect(rewriteMtAssetText(source, 'https://not-authorized.example')).toBe(source);
   });
 
   it('embeds only an opaque login-scoped ledger namespace, not an account or game token', () => {
@@ -106,6 +122,9 @@ describe('MT foreground proxy boundaries', () => {
     expect(String(target)).toBe(`${MT_UPSTREAM_ORIGIN}/?token=secret-token&lang=zhtw`);
     expect(String(target)).toContain(MT_UPSTREAM_ORIGIN);
     expect((init?.headers as Headers).get('cookie')).toBeNull();
+    expect((init?.headers as Headers).get('origin')).toBeNull();
+    expect((init?.headers as Headers).get('referer')).toBeNull();
+    expect((init?.headers as Headers).get('x-forwarded-for')).toBeNull();
     expect(String(asset.body)).toContain('/mt-game/assets/app.js');
     expect(String(asset.body)).not.toContain('secret-token');
     expect(asset.headers.get('cache-control')).toContain('no-store');
@@ -115,6 +134,8 @@ describe('MT foreground proxy boundaries', () => {
     const [followupTarget, followupInit] = upstreamFetch.mock.calls[1]!;
     expect(String(followupTarget)).toBe(`${MT_UPSTREAM_ORIGIN}/api/v1/tables?lang=zhtw`);
     expect((followupInit?.headers as Headers).get('cookie')).toBe('mt_upstream=isolated');
+    expect((followupInit?.headers as Headers).get('origin')).toBeNull();
+    expect((followupInit?.headers as Headers).get('referer')).toBe(`${MT_UPSTREAM_ORIGIN}/`);
 
     const rejected = fakeResponse();
     await app.uses.get(MT_GAME_PREFIX)!({ method: 'POST', originalUrl: '/mt-game/api/v1/bet', url: '/mt-game/api/v1/bet', headers: { cookie: browserCookie.split(';')[0] } }, rejected);

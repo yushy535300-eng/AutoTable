@@ -107,7 +107,12 @@ catch { playwright = require('/tmp/dg-testdeps/node_modules/playwright'); }
     assert.equal(await page.getByText('即時多桌牌路', {exact: true}).count(), 0);
     const frame = page.frame({url: /\/ddnewpc\/index\.html/});
     const header = page.getByTestId('autobac-game-header');
-    for (const id of ['header-threads','header-line','header-register','header-help','header-reconnect','header-logout']) await page.getByTestId(id).waitFor();
+    for (const id of ['header-platform','header-help','header-reconnect','header-logout']) await page.getByTestId(id).waitFor();
+    assert.equal(await header.getByRole('button').count(),4,'Only four useful actions remain permanently on top');
+    assert.equal(await page.getByTestId('header-collapse-mobile').count(),0,'No dropdown or collapse control');
+    await frame.evaluate(() => window.__AUTOBAC_FRAME_MARKER__ = 'same-document');
+    await page.getByTestId('header-help').click();
+    await page.getByTestId('autobac-help').waitFor();
     await page.evaluate(() => {
       window.__AUTOBAC_LINKS__ = [];
       window.open = (url, target, features) => { window.__AUTOBAC_LINKS__.push({url,target,features}); return null; };
@@ -118,21 +123,23 @@ catch { playwright = require('/tmp/dg-testdeps/node_modules/playwright'); }
     assert.equal(links[1].url, 'https://line.me/ti/p/k2pkYGXGL3');
     assert.equal(links[2].url, 'https://shy9453.tz6868.cc');
     assert(links.every(x => x.target === '_blank' && x.features.includes('noopener')));
-    await frame.evaluate(() => window.__AUTOBAC_FRAME_MARKER__ = 'same-document');
-    await page.getByTestId('header-help').click();
     await page.getByTestId('autobac-help').waitFor();
     assert.equal(await page.getByText('自動下注使用說明', {exact:true}).count(), 1);
     await page.getByRole('button', {name:'關閉使用說明',exact:true}).click();
-    await page.getByTestId('header-collapse-mobile').click();
-    await page.getByRole('button', {name:'展開頂部資訊',exact:true}).click();
-    assert.equal(await frame.evaluate(() => window.__AUTOBAC_FRAME_MARKER__), 'same-document', 'Help/collapse must not reload DG');
+    assert.equal(await page.getByRole('button', {name:'展開頂部資訊',exact:true}).count(),0,'Useful actions are never hidden in a dropdown');
+    assert.equal(await frame.evaluate(() => window.__AUTOBAC_FRAME_MARKER__), 'same-document', 'Help must not reload DG');
     assert.equal(await frame.evaluate(() => window.__DG_SINGLEPAGE__.status().running), false, 'Header actions must not start betting');
     for (const size of [{width:390,height:844},{width:320,height:700},{width:1440,height:960}]) {
       await page.setViewportSize(size);
       await page.waitForTimeout(180);
       const fits = await header.evaluate(n => n.scrollWidth <= n.clientWidth + 1);
       assert(fits, 'Header overflow at ' + size.width);
-      for (const id of ['header-line','header-register','header-help','header-reconnect','header-logout']) assert(await page.getByTestId(id).isVisible());
+      for (const id of ['header-platform','header-help','header-reconnect','header-logout']) assert(await page.getByTestId(id).isVisible());
+      const boxes=await Promise.all(['header-platform','header-reconnect','header-help','header-logout'].map(id=>page.getByTestId(id).boundingBox()));
+      assert(boxes.every(box=>Math.abs(box.y-boxes[0].y)<1),'All useful buttons remain on one row');
+      const top=await header.boundingBox();assert.equal(Math.round(top.height),56);assert.equal(Math.round(top.y),0);
+      if(size.width<850)assert(boxes.every(box=>box.width>=44&&box.height>=44),'Phone touch targets are 44px');
+      for(const id of ['header-line','header-register','header-record','header-diagnostics'])assert.equal(await header.getByTestId(id).count(),0,'Auxiliary tools do not occupy header');
       if (outputDir && size.width !== 320) await header.screenshot({path:path.join(outputDir, size.width === 390 ? 'header-mobile.png' : 'header-desktop.png')});
     }
     await page.setViewportSize({width:390,height:844});
@@ -144,6 +151,7 @@ catch { playwright = require('/tmp/dg-testdeps/node_modules/playwright'); }
       main._children=[{tableId:60102,gameInfo:{tableName:'RB02',stateId:0,gameNo:'manual-ui',countDown:0,roadArray:[]},playerInfo:main.playerInfo,betBtn:{Banker:{},Player:{}},betMan:{confirm:{},cancel:{}},betMoneyTmp:{},betMoneyTrue:{},confirmBet(){}}];
       window.__MANUAL_TEST_SEND__=()=>{socket.sendData({cmd:6,tableId:60102,gameNo:'manual-ui'});for(const h of handlers.filter(h=>h.event==='RECEIVED_SUCCESS'))h.fn({cmd:6,tableId:60102,gameNo:'manual-ui',codeId:0,list:['{"banker":100}']});for(const h of handlers.filter(h=>h.event==='RECEIVED_SUCCESS'))h.fn({cmd:1007,tableId:60102,gameNo:'manual-ui',codeId:0,dList:[1234.56,95]});};
     });
+    await page.getByTestId('header-help').click();
     await page.getByTestId('header-record').click();
     await page.getByTestId('dg-live-diagnostics').waitFor();
     await page.waitForFunction(()=>document.querySelector('[data-testid="dg-live-diagnostics"]').textContent.includes('1,234.56'));
@@ -153,6 +161,7 @@ catch { playwright = require('/tmp/dg-testdeps/node_modules/playwright'); }
     assert(diagnosticText.includes('送出 1')&&diagnosticText.includes('結算 1'),'Live diagnostic shows matched native lifecycle');
     assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().running),false,'Diagnostic recording never starts the automatic engine');
     if(outputDir)await page.screenshot({path:path.join(outputDir,'dg-mobile-live-diagnostics.png'),fullPage:true});
+    await page.getByTestId('header-help').click();
     const downloadPromise=page.waitForEvent('download');
     await page.getByTestId('header-record').click();
     const download=await downloadPromise;assert.equal(download.suggestedFilename(),'AutoBac-DG-manual-flow.json');

@@ -676,7 +676,13 @@ function createMtTableNavigator(W, getTables, isDisposed = () => false) {
 if(typeof module!=='undefined')module.exports={createMtTableNavigator};
 
 function installMtNavigationPatch(W, makeNavigator) {
-  if(!/(^|\.)ofalive99\.net$/i.test(W.location.hostname)){
+  let foreground=false;
+  try {
+    const marker=W.__AUTOBAC_MT_FOREGROUND__,descriptor=Object.getOwnPropertyDescriptor(W,'__AUTOBAC_MT_FOREGROUND__');
+    foreground=!!marker&&Object.isFrozen(marker)&&!!descriptor&&descriptor.value===marker&&!descriptor.writable&&!descriptor.configurable&&marker.kind==='autobac-mt-foreground-v1'&&marker.version===1&&marker.pathPrefix==='/mt-game'&&(W.location.pathname==='/mt-game'||W.location.pathname.startsWith('/mt-game/'))&&W.parent!==W&&W.parent.location.origin===W.location.origin;
+  } catch { foreground=false; }
+  const native=W.location.protocol==='https:'&&['gsa.ofalive99.net','gsb.ofalive99.net','gs1.ofalive99.net'].includes(W.location.hostname);
+  if(!foreground&&!native){
     W.console.error('[AutoBac MT] 請在MT頁面本身執行定位修補。');return null;
   }
   const D=W.document,diag=W.__MT_AUTOBAC_DIAG__;
@@ -2596,6 +2602,11 @@ installMtNavigationPatch(window, createMtTableNavigator);
 #panel.compact.mini .compact-actions button{height:31px;min-width:0;font-size:9px}
 #panel.compact.mini .steps,#panel.compact.mini .step-labels,#panel.compact.mini .metrics,
 #panel.compact.mini #cards-result,#panel.compact.mini #chart-wrap,#panel.compact.mini #table-strip{display:none}
+/* iOS focuses sub-16px controls by zooming the whole viewport. This must live
+   inside the shared shadow-root CSS as document styles cannot reach it. */
+@media(pointer:coarse){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]),textarea,select{font-size:16px!important}
+}
 `;
 
   // lib/dg-panel-density.ts
