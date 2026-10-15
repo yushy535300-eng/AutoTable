@@ -23,6 +23,14 @@ export const DG_MOBILE_LAYOUT_CSS = `
 #panel.compact.mini .compact-actions button{height:31px;min-width:0;font-size:9px}
 #panel.compact.mini .steps,#panel.compact.mini .step-labels,#panel.compact.mini .metrics,
 #panel.compact.mini #cards-result,#panel.compact.mini #chart-wrap,#panel.compact.mini #table-strip{display:none}
+/* Keep both existing status locations single-line; no panel size changes. */
+#panel .roomline{flex-wrap:nowrap;min-width:0;overflow:hidden}
+#panel #focus-table{flex:none;white-space:nowrap}
+#panel #focus-phase{flex:1;min-width:0;white-space:nowrap;overflow-x:auto;overflow-y:hidden;text-overflow:clip;scrollbar-width:none;touch-action:pan-x}
+#panel #hero-status,#panel.compact.mini #hero-status{display:block;white-space:nowrap;overflow-x:auto;overflow-y:hidden;text-overflow:clip;-webkit-line-clamp:unset;overflow-wrap:normal;scrollbar-width:none;touch-action:pan-x}
+#panel #focus-phase::-webkit-scrollbar,#panel #hero-status::-webkit-scrollbar{display:none}
+#panel select:not([hidden]),#panel #settings-page select:not([hidden]){padding-top:0;padding-bottom:0;padding-left:8px;padding-right:28px;line-height:normal;min-width:0}
+#panel #settings-page input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]),#panel #settings-page textarea{padding-top:0;padding-bottom:0;line-height:normal}
 /* iOS focuses sub-16px controls by zooming the whole viewport. This must live
    inside the shared shadow-root CSS as document styles cannot reach it. */
 @media(pointer:coarse){

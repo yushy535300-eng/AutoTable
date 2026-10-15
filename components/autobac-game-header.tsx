@@ -1,5 +1,6 @@
+import { AutoBacLogo } from './autobac-logo';
 import { useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { AUTOBAC_BRAND as brand, openBrandLink } from '@/lib/autobac-brand';
 import type { GamePlatform } from './autobac-platform-choice';
@@ -33,7 +34,7 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
   return <>
     <View testID="autobac-game-header" style={[s.header, small && s.headerMobile, Platform.OS === 'web' && { position: 'sticky' as any, top: 0 }]}>
       <View style={[s.identity, small && s.identityMobile]}>
-        <View style={[s.mark, small && s.markMobile]}><Text style={[s.markText, small && s.markTextMobile]}>AB</Text></View>
+        <AutoBacLogo testID="autobac-header-logo" style={[s.mark, small && s.markMobile]} />
         <View style={s.brandCopy}>
           <View style={s.titleRow}><Text numberOfLines={1} style={[s.title, small && s.titleMobile]}>{brand.name}</Text>{!small ? <Text style={s.chinese}>{brand.chineseName}</Text> : null}</View>
           <View style={s.status} accessibilityLabel={`${platform} · ${installed ? '面板已載入' : '正在載入'}${recording ? ' · 記錄中' : ''}`}>
@@ -43,6 +44,7 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
         </View>
       </View>
       <View testID="autobac-header-actions" style={[s.actions, small && s.actionsMobile]}>
+        <Pressable testID="header-line" accessibilityRole="link" accessibilityLabel="LINE 聯絡" onPress={() => openBrandLink('line')} style={({ pressed }) => [s.button, s.headerButton, small && s.buttonMobile, { paddingVertical: 1 }, pressed && s.pressed]}><Image source={require('../assets/images/line-official.png')} style={{ width: small ? 40 : 32, height: small ? 40 : 32 }} resizeMode="contain" /></Pressable>
         <HeaderButton testID="header-platform" label="平台" icon="apps" compact={small} disabled={disabled} onPress={onSelectPlatform} />
         <HeaderButton testID="header-reconnect" label="重連" icon="sync" compact={small} disabled={disabled} onPress={onReconnect} />
         <HeaderButton testID="header-help" label="說明" icon="help-outline" compact={small} onPress={() => setHelpOpen(true)} />
@@ -70,7 +72,7 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
           </View> : null}
           <View style={s.helpContacts}>
             <Pressable testID="header-threads" accessibilityRole="link" accessibilityLabel={`Threads ${brand.creatorName} ${brand.threadsHandle}`} onPress={() => openBrandLink('threads')} style={s.contact}><Text style={s.helpLink}>Threads {brand.threadsHandle} ↗</Text></Pressable>
-            <Pressable testID="header-line" accessibilityRole="link" accessibilityLabel="LINE 聯絡" onPress={() => openBrandLink('line')} style={s.contact}><Text style={s.helpLink}>LINE 聯絡 ↗</Text></Pressable>
+            <Pressable testID="help-line" accessibilityRole="link" accessibilityLabel="LINE 聯絡" onPress={() => openBrandLink('line')} style={s.contact}><Text style={s.helpLink}>LINE 聯絡 ↗</Text></Pressable>
             <Pressable testID="header-register" accessibilityRole="link" accessibilityLabel="註冊" onPress={() => openBrandLink('register')} style={s.contact}><Text style={s.helpLink}>註冊 ↗</Text></Pressable>
           </View>
         </View>
@@ -80,7 +82,7 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
 }
 
 function HeaderButton({ label, icon, onPress, compact, disabled, testID }: { label: string; icon: keyof typeof MaterialIcons.glyphMap; onPress: () => void; compact?: boolean; disabled?: boolean; testID: string }) {
-  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [s.button, compact && s.buttonMobile, pressed && s.pressed, disabled && s.disabled]}><MaterialIcons name={icon} size={compact ? 16 : 15} color="#e5decb" /><Text numberOfLines={1} style={[s.buttonText, compact && s.buttonTextMobile]}>{label}</Text></Pressable>;
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [s.button, ['header-platform','header-reconnect','header-help','header-logout'].includes(testID) && s.headerButton, compact && s.buttonMobile, pressed && s.pressed, disabled && s.disabled]}><MaterialIcons name={icon} size={compact ? 16 : 15} color="#e5decb" /><Text numberOfLines={1} style={[s.buttonText, compact && s.buttonTextMobile]}>{label}</Text></Pressable>;
 }
 function HelpSection({ number, title, text }: { number: string; title: string; text: string }) {
   return <View style={s.helpSection}><Text style={s.number}>{number}</Text><View style={{ flex: 1 }}><Text style={s.sectionTitle}>{title}</Text><Text style={s.sectionText}>{text}</Text></View></View>;
@@ -105,6 +107,7 @@ const s = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, flexWrap: 'nowrap', gap: 6 },
   actionsMobile: { gap: 3 },
   button: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 10, borderWidth: 1, borderColor: '#454b3e', backgroundColor: '#252d23', borderRadius: 7 },
+  headerButton: { width: 64, height: 40, paddingHorizontal: 2, flexShrink: 0 },
   buttonMobile: { width: 44, height: 44, minHeight: 44, flexDirection: 'column', gap: 2, paddingHorizontal: 2, paddingVertical: 3 },
   buttonText: { color: '#e8e4d3', fontSize: 11, fontWeight: '600' },
   buttonTextMobile: { fontSize: 10 },

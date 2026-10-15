@@ -66,6 +66,140 @@ SOFTWARE.
     };
   }
 
+  // lib/dg-usage-history.ts
+  var states = /* @__PURE__ */ new Set(["reserved", "submitted", "accepted", "settled", "uncertain", "rejected", "aborted"]);
+  function usageHistoryInPeriod(rows, period, now = Date.now()) {
+    const day = 864e5, offset = 288e5, start = Math.floor((now + offset) / day) * day - offset;
+    const from = period === "yesterday" ? start - day : period === "week" ? start - 6 * day : start;
+    const until = period === "yesterday" ? start : start + day;
+    return rows.filter((row) => row.createdAt >= from && row.createdAt < until);
+  }
+  function createDgUsageHistory(now = () => Date.now()) {
+    let runs = [];
+    let activeId = null;
+    function active() {
+      return runs.find((run) => run.id === activeId);
+    }
+    return {
+      load(value) {
+        runs = [];
+        activeId = null;
+        const saved = value;
+        if (saved?.version !== 1 || !Array.isArray(saved.runs)) return;
+        const owners = /* @__PURE__ */ new Set();
+        const ids = /* @__PURE__ */ new Set();
+        for (const value2 of saved.runs) {
+          const r = value2;
+          if (!r || typeof r.id !== "string" || ids.has(r.id) || !Number.isFinite(r.createdAt) || !Number.isFinite(r.elapsedMs) || r.elapsedMs < 0 || !Number.isFinite(r.updatedAt) || !Number.isSafeInteger(r.minutes) || r.minutes < 0 || !["active", "stopped", "interrupted"].includes(r.state)) continue;
+          const bets = /* @__PURE__ */ Object.create(null);
+          if (r.bets && typeof r.bets === "object") for (const [key, b] of Object.entries(r.bets)) {
+            if (owners.has(key) || !b || !states.has(b.state)) continue;
+            bets[key] = { state: b.state, pnl: b.state === "settled" && Number.isFinite(b.pnl) ? b.pnl : null };
+            owners.add(key);
+          }
+          ids.add(r.id);
+          runs.push({
+            id: r.id,
+            createdAt: r.createdAt,
+            updatedAt: r.updatedAt,
+            endedAt: r.state === "active" ? r.updatedAt : Number.isFinite(r.endedAt) ? r.endedAt : r.updatedAt,
+            elapsedMs: r.elapsedMs,
+            minutes: r.minutes,
+            state: r.state === "active" ? "interrupted" : r.state,
+            bets
+          });
+        }
+      },
+      begin(minutes) {
+        if (active()) throw new Error("\u524D\u6B21\u4F7F\u7528\u5C1A\u672A\u505C\u6B62\uFF0C\u4E0D\u91CD\u8A2D\u4F7F\u7528\u7D00\u9304");
+        const at = now();
+        const id = globalThis.crypto?.randomUUID?.() ?? `${at}-${Math.random().toString(36).slice(2)}`;
+        const run = { id, createdAt: at, endedAt: null, updatedAt: at, elapsedMs: 0, minutes, state: "active", bets: /* @__PURE__ */ Object.create(null) };
+        runs.push(run);
+        activeId = id;
+        if (runs.length > 100) {
+          const disposable = runs.findIndex((r) => r.id !== activeId && Object.values(r.bets).every((b) => ["settled", "rejected", "aborted"].includes(b.state)));
+          if (disposable >= 0) runs.splice(disposable, 1);
+        }
+        return id;
+      },
+      addBet(bet) {
+        if (runs.some((run2) => Object.prototype.hasOwnProperty.call(run2.bets, bet.key))) return;
+        const run = active();
+        if (run) run.bets[bet.key] = { state: bet.state, pnl: null };
+      },
+      sync(bets) {
+        const byKey = new Map(bets.map((b) => [b.key, b]));
+        for (const run of runs) for (const [key, entry] of Object.entries(run.bets)) {
+          const bet = byKey.get(key);
+          if (!bet) continue;
+          entry.state = bet.state;
+          entry.pnl = bet.state === "settled" && Number.isFinite(bet.pnl) ? bet.pnl : null;
+        }
+      },
+      updateElapsed(elapsedMs) {
+        const run = active();
+        if (!run || !Number.isFinite(elapsedMs)) return false;
+        const used = Math.max(run.elapsedMs, elapsedMs);
+        if (Math.floor(used / 1e3) === Math.floor(run.elapsedMs / 1e3)) return false;
+        run.elapsedMs = used;
+        run.updatedAt = now();
+        return true;
+      },
+      finish(elapsedMs) {
+        const run = active();
+        if (!run) return;
+        run.elapsedMs = Math.max(run.elapsedMs, Number.isFinite(elapsedMs) ? elapsedMs : 0);
+        run.endedAt = now();
+        run.updatedAt = run.endedAt;
+        run.state = "stopped";
+        activeId = null;
+      },
+      view() {
+        return [...runs].reverse().map((run) => {
+          const entries = Object.values(run.bets);
+          const settled = entries.filter((b) => b.state === "settled" && b.pnl !== null);
+          return {
+            ...run,
+            bets: Object.fromEntries(Object.entries(run.bets).map(([key, entry]) => [key, { ...entry }])),
+            elapsedText: formatDuration(run.elapsedMs),
+            pnl: settled.reduce((sum, b) => sum + b.pnl, 0),
+            settledCount: settled.length,
+            wins: settled.filter((b) => b.pnl > 0).length,
+            losses: settled.filter((b) => b.pnl < 0).length,
+            pendingCount: entries.filter((b) => ["reserved", "submitted", "accepted"].includes(b.state)).length,
+            uncertainCount: entries.filter((b) => b.state === "uncertain" || b.state === "settled" && b.pnl === null).length
+          };
+        });
+      },
+      snapshot() {
+        return JSON.parse(JSON.stringify({ version: 1, runs }));
+      }
+    };
+  }
+
+  // lib/dg-bet-summary.ts
+  function dgBetSummary(bets, names, since = 0) {
+    const name = (bet) => names[bet.tableId] || bet.tableId;
+    const uniqueNames = (rows) => [...new Set(rows.map(name))].join(" \xB7 ");
+    const waiting = bets.filter((b) => b.state === "accepted" && !b.attributionUncertain);
+    const confirming = bets.filter((b) => b.state === "reserved" || b.state === "submitted");
+    const uncertain = bets.filter((b) => b.state === "uncertain" || b.attributionUncertain);
+    const latest = /* @__PURE__ */ new Map();
+    for (const bet of bets) {
+      if (bet.attributionUncertain || !["accepted", "settled"].includes(bet.state) || bet.acceptedAt === void 0) continue;
+      if (bet.state !== "accepted" && bet.acceptedAt < since) continue;
+      const previous = latest.get(bet.tableId);
+      if (!previous || bet.acceptedAt >= previous.acceptedAt) latest.set(bet.tableId, bet);
+    }
+    return {
+      waiting: uniqueNames(waiting),
+      confirming: uniqueNames(confirming),
+      uncertain: uniqueNames(uncertain),
+      success: [...latest.values()].map((b) => `${name(b)}${b.side}${b.amount.toLocaleString("zh-TW")}`).join(" \xB7 ")
+    };
+  }
+
   // lib/dg-panel-touch-scroll.ts
   function installDgPanelTouchScroll(root) {
     let state = null;
@@ -916,6 +1050,14 @@ SOFTWARE.
 #panel.compact.mini .compact-actions button{height:31px;min-width:0;font-size:9px}
 #panel.compact.mini .steps,#panel.compact.mini .step-labels,#panel.compact.mini .metrics,
 #panel.compact.mini #cards-result,#panel.compact.mini #chart-wrap,#panel.compact.mini #table-strip{display:none}
+/* Keep both existing status locations single-line; no panel size changes. */
+#panel .roomline{flex-wrap:nowrap;min-width:0;overflow:hidden}
+#panel #focus-table{flex:none;white-space:nowrap}
+#panel #focus-phase{flex:1;min-width:0;white-space:nowrap;overflow-x:auto;overflow-y:hidden;text-overflow:clip;scrollbar-width:none;touch-action:pan-x}
+#panel #hero-status,#panel.compact.mini #hero-status{display:block;white-space:nowrap;overflow-x:auto;overflow-y:hidden;text-overflow:clip;-webkit-line-clamp:unset;overflow-wrap:normal;scrollbar-width:none;touch-action:pan-x}
+#panel #focus-phase::-webkit-scrollbar,#panel #hero-status::-webkit-scrollbar{display:none}
+#panel select:not([hidden]),#panel #settings-page select:not([hidden]){padding-top:0;padding-bottom:0;padding-left:8px;padding-right:28px;line-height:normal;min-width:0}
+#panel #settings-page input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]),#panel #settings-page textarea{padding-top:0;padding-bottom:0;line-height:normal}
 /* iOS focuses sub-16px controls by zooming the whole viewport. This must live
    inside the shared shadow-root CSS as document styles cannot reach it. */
 @media(pointer:coarse){
@@ -1531,12 +1673,12 @@ ${DG_MOBILE_LAYOUT_CSS}
 <div class="parallel-control"><label for="parallel-count">\u540C\u6642\u4E0B\u6CE8</label><select id="parallel-count" aria-label="\u540C\u6642\u4E0B\u6CE8\u684C\u6578"><option value="1" selected>1 \u684C</option><option value="3">3 \u684C</option><option value="5">5 \u684C</option><option value="all">\u6240\u6709\u5DF2\u8F09\u5165\u684C</option></select><button id="choose-tables" class="choose-tables">\u9078\u684C</button></div><div id="parallel-summary" class="parallel-summary">\u9010\u684C\u7368\u7ACB \xB7 \u4E0D\u7B49\u5176\u4ED6\u684C\u7D50\u7B97</div><div class="mini-context"><span id="mini-running">\u5DF2\u505C\u6B62</span><span>\u9918\u984D <strong id="mini-balance">\u2014</strong></span></div><div class="session-time" aria-label="\u672C\u6B21\u4F7F\u7528\u6642\u9593"><span>\u4F7F\u7528\u6642\u9593 <strong id="session-elapsed">00:00:00</strong></span><span id="session-remaining">\u4E0D\u9650\u6642</span></div><div class="hero"><div class="hero-head"><span id="run-pill" class="pill idle">\u25CF \u5DF2\u505C\u6B62</span><span id="method" class="method">\u7B56\u7565 \xB7 \u99AC\u4E01</span></div><div id="search-box" class="search-box" hidden><div><strong id="search-title">\u6311\u9078\u4E0B\u6CE8\u684C\u2026</strong><div class="search-note">\u7B49\u5F85\u9078\u5B9A\u684C\u53F0\u958B\u653E\u4E0B\u6CE8</div></div><span class="search-icon">\u2315</span></div><div id="target-box"><div class="strategy-preview"><span>\u7B56\u7565</span><span class="strategy-badge"><i id="main-strategy-logo" class="provider-logo" aria-hidden="true"></i><strong id="current-strategy">AI\u7D9C\u5408</strong></span></div><div class="roomline"><span id="focus-table">\u7B49\u5F85\u684C\u53F0</span><span id="focus-phase" class="subtle">\u6E96\u5099\u4E2D</span></div><div class="amount-explainer"><span id="amount-label">\u4E0B\u4E00\u6CE8\u9810\u89BD</span><span id="amount-rule">\u57FA\u672C 100 \xB7 \u7B2C1\u968E \xD71</span></div><div class="bet-main"><div class="bet-value"><strong id="amount" class="amount">100</strong><span id="side" class="side">\u2014</span></div><div id="ring" class="ring"><span id="countdown" class="ring-inner">\u2014</span></div></div><div id="focus-meta" class="meta">\u7B49\u5019\u771F\u5BE6\u724C\u8DEF\u8207\u5012\u6578</div><div class="steps"><i id="step-1" class="step"></i><i id="step-2" class="step"></i><i id="step-3" class="step"></i><i id="step-4" class="step"></i></div><div class="step-labels"><span>\u8B80\u53D6</span><span>\u7B49\u5F85\u63A5\u53D7</span><b>\u7D50\u7B97</b><span>\u7E8C\u6CE8</span></div></div><div id="cards-result" class="cards-result" hidden><div class="cards-side"><small>\u9592 PLAYER</small><strong id="player-point">\u2014</strong><div id="player-cards" class="cards-line"></div></div><div class="cards-side"><small>\u838A BANKER</small><strong id="banker-point">\u2014</strong><div id="banker-cards" class="cards-line"></div></div></div><div class="metrics"><div><small>\u7D2F\u8A08\u6700\u4F4E</small><strong id="range-low" class="meter-value">\u2014</strong></div><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="hero-pnl">0</strong></div><div><small>\u7D2F\u8A08\u6700\u9AD8</small><strong id="range-high" class="meter-value">\u2014</strong></div></div><input id="pnl-range" class="range-view" type="range" min="0" max="100" value="50" tabindex="-1" aria-label="\u672C\u8F2A\u7D50\u7B97\u5728\u986F\u793A\u7BC4\u570D\u5167\u7684\u4F4D\u7F6E" aria-readonly="true"><button id="stop-now" class="main-action"><span class="action-mark">\u25B6</span>\u958B\u59CB\u81EA\u52D5\u4E0B\u6CE8</button><div id="hero-status" class="statusline" role="button" tabindex="0" aria-label="\u67E5\u770B\u5B8C\u6574\u72C0\u614B">\u5C1A\u672A\u9001\u51FA\u4E0B\u6CE8</div></div>
 <div class="section-head"><span>\u672C\u8F2A</span><button id="open-records" class="gold">\u8A18\u9304</button></div><div class="stats"><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="round-pnl">0</strong></div><div><small>\u8D0F\uFF0F\u8F38\uFF0F\u548C</small><strong id="round-wlt">0/0/0</strong></div><div><small>\u5BE6\u969B\u547D\u4E2D\u7387</small><strong id="hit-rate">\u2014</strong></div></div>${OFFICIAL_TURNOVER_HTML}<div id="chart-wrap" class="chart-wrap"><div class="chart-head"><span>\u7D2F\u8A08\u640D\u76CA\u8D70\u52E2</span><strong id="chart-last">\u2014</strong></div><svg id="pnl-chart" class="chart" viewBox="0 0 250 43" preserveAspectRatio="none" aria-label="\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u66F2\u7DDA"><path class="chart-grid" d="M0 4H250 M0 14H250 M0 25H250 M0 39H250 M0 4V39 M62 4V39 M125 4V39 M188 4V39 M250 4V39"/><line id="chart-zero" class="chart-zero" x1="0" x2="250" y1="22" y2="22"/><polygon id="chart-area" class="chart-area" points=""/><polyline id="pnl-line" points="0,22 250,22"/><circle id="chart-dot" class="chart-dot" cx="250" cy="22" r="1.6"/></svg><div id="chart-empty" class="chart-empty">\u7B49\u5F85\u9996\u7B46\u7D50\u7B97</div><div class="chart-foot"><span id="chart-low">\u6700\u4F4E \u2014</span><span id="chart-count">0 \u6CE8</span><span id="chart-high">\u6700\u9AD8 \u2014</span></div></div><div class="section-head"><span>\u5DF2\u9078\u684C\u53F0</span><button id="edit-rooms" class="gold">\u5168\u90E8</button></div><div id="tables"></div><div id="table-strip" aria-label="\u5DF2\u9078\u684C\u53F0"></div><div class="footer">\u63A8\u85A6\u50C5\u4F9B\u53C3\u8003</div></div>
 <div id="settings-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u57F7\u884C\u53C3\u6578</div><h2 class="page-title">\u7B56\u7565\u8A2D\u5B9A</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg></span></div><p class="surface-note">\u8A2D\u5B9A\u65B9\u5411\u4F86\u6E90\u3001\u55AE\u6CE8\u91D1\u984D\u8207\u505C\u6B62\u689D\u4EF6\u3002</p><div class="form-body">
-<section class="form-section"><h3 class="form-section-head"><i>01</i>\u63A8\u85A6\u8207\u914D\u6CE8</h3><label for="single-staking">\u914D\u6CE8\u65B9\u5F0F</label><select id="single-staking"><option value="flat">\u5E73\u6CE8 \xB7 \u6BCF\u7B46\u56FA\u5B9A\u91D1\u984D</option><option value="martingale" selected>\u99AC\u4E01 \xB7 \u8DE8\u623F\u63A5\u7E8C\uFF0C\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E</option><option value="doubling">\u500D\u6295\u6CD5 \xB7 1\u21922\u21924\u21928\uFF0C\u8F38\u5F8C\u52A0\u500D\u3001\u8D0F\u91CD\u7F6E</option></select><label for="start-mode">\u958B\u59CB\u65B9\u5F0F</label><select id="start-mode"><option value="fresh" selected>\u65B0\u958B\u59CB \xB7 \u9996\u7B46\u57FA\u672C\u55AE\u6CE8</option><option value="resume">\u7E8C\u63A5 \xB7 \u6CBF\u7528\u914D\u6CE8\u968E\u7D1A</option></select><div id="staking-hint" class="settings-added"></div><p id="doubling-reminder" class="doubling-reminder" hidden>\u4F7F\u7528\u500D\u6295\u6CD5\uFF0C\u8ACB\u8A2D\u5B9A\u6B62\u76C8\u8207\u6B62\u640D\uFF1B\u9023\u7E8C\u8667\u640D\u6703\u4F7F\u4E0B\u4E00\u6CE8\u52A0\u500D\u3002</p><label id="provider-label" for="provider-trigger">\u63A8\u85A6\u4F86\u6E90</label><div class="provider-picker"><select id="provider" hidden></select><button id="provider-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="provider-menu" aria-labelledby="provider-label provider-selected-name"><span id="provider-selected-logo" class="provider-logo" aria-hidden="true"></span><span id="provider-selected-name">AI\u7D9C\u5408</span><svg class="provider-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="provider-menu" role="listbox" aria-label="\u63A8\u85A6\u4F86\u6E90" hidden></div></div></section>
+<section class="form-section"><h3 class="form-section-head"><i>01</i>\u63A8\u85A6\u8207\u914D\u6CE8</h3><label for="single-staking">\u914D\u6CE8\u65B9\u5F0F</label><select id="single-staking"><option value="flat">\u5E73\u6CE8 \xB7 \u56FA\u5B9A\u984D</option><option value="martingale" selected>\u99AC\u4E01 \xB7 \u8F38\u5347\u968E</option><option value="doubling">\u500D\u6295 \xB7 \u8F38\u52A0\u500D</option></select><label for="start-mode">\u958B\u59CB\u65B9\u5F0F</label><select id="start-mode"><option value="fresh" selected>\u65B0\u958B\u59CB \xB7 \u57FA\u672C\u984D</option><option value="resume">\u7E8C\u63A5 \xB7 \u4FDD\u7559\u968E\u7D1A</option></select><div id="staking-hint" class="settings-added"></div><p id="doubling-reminder" class="doubling-reminder" hidden>\u4F7F\u7528\u500D\u6295\u6CD5\uFF0C\u8ACB\u8A2D\u5B9A\u6B62\u76C8\u8207\u6B62\u640D\uFF1B\u9023\u7E8C\u8667\u640D\u6703\u4F7F\u4E0B\u4E00\u6CE8\u52A0\u500D\u3002</p><label id="provider-label" for="provider-trigger">\u63A8\u85A6\u4F86\u6E90</label><div class="provider-picker"><select id="provider" hidden></select><button id="provider-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="provider-menu" aria-labelledby="provider-label provider-selected-name"><span id="provider-selected-logo" class="provider-logo" aria-hidden="true"></span><span id="provider-selected-name">AI\u7D9C\u5408</span><svg class="provider-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="provider-menu" role="listbox" aria-label="\u63A8\u85A6\u4F86\u6E90" hidden></div></div></section>
 <section class="form-section"><h3 class="form-section-head"><i>02</i>\u6295\u6CE8\u91D1\u984D</h3><div class="form-row"><div><label for="base">\u57FA\u672C\u55AE\u6CE8</label><input id="base" type="number" min="1" value="100"></div><div><label for="cap">\u55AE\u7B46\u4E0A\u9650</label><input id="cap" type="number" min="1" value="100000"></div></div></section>
 <section class="settings-added"><label for="duration-minutes">\u81EA\u52D5\u505C\u6B62\u6642\u9593\uFF08\u5206\u9418\uFF09</label><input id="duration-minutes" type="number" min="0" step="1" inputmode="numeric" value="0" placeholder="0\uFF1D\u4E0D\u9650\u6642"><p class="field-note">\u78BA\u8A8D\u958B\u59CB\u5F8C\u8A08\u6642\uFF0C\u5305\u542B\u627E\u684C\u53CA\u7B49\u5F85\u7D50\u7B97\u30020\u6216\u7559\u7A7A\u4E0D\u9650\u6642\uFF1B\u6642\u9593\u5230\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u5DF2\u63A5\u53D7\u6CE8\u55AE\u7E7C\u7E8C\u7D50\u7B97\u3002\u6BCF\u6B21\u91CD\u65B0\u958B\u59CB\u6703\u91CD\u65B0\u8A08\u6642\u3002</p></section><section class="form-section"><h3 class="form-section-head"><i>03</i>\u6B62\u640D\u8207\u6B62\u76C8</h3><div class="form-row"><div><label for="stop-loss">\u6B62\u640D\u91D1\u984D</label><input id="stop-loss" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div><div><label for="take-profit">\u6B62\u76C8\u91D1\u984D</label><input id="take-profit" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div></div><p class="field-note">\u9054\u5230\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u9580\u6ABB\u5F8C\uFF0C\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\u3002</p></section>
 <span id="zoom-label" hidden>100%</span><input id="zoom" type="range" min="70" max="180" step="10" value="100" hidden><input id="range-min" hidden value=""><input id="range-max" hidden value=""><select id="scope" hidden disabled><option value="table" selected>\u9010\u684C\u7368\u7ACB</option></select><select id="count" hidden><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="all">all</option></select><button id="scan" hidden></button><div hidden><button id="start"></button><button id="once"></button><button id="stop"></button></div></div></div>
-<div id="rooms-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u4E0B\u6CE8\u7BC4\u570D</div><h2 class="page-title">\u9078\u64C7\u684C\u53F0</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span></div><div class="selection-control"><span id="selection-mode">\u81EA\u52D5\u627E\u684C \xB7 \u958B\u653E\u4E0B\u6CE8\u5C31\u52A0\u5165</span><button id="auto-tables">\u81EA\u52D5\u627E\u684C\u4E2D</button></div><div id="rooms-hint" class="surface-note page-caption">\u5148\u53D6\u6D88\u4E00\u684C\uFF0C\u518D\u9078\u5176\u4ED6\u684C\u3002</div><div id="rooms"></div><button id="rooms-back" class="rooms-back">\u5B8C\u6210\u9078\u64C7\uFF0C\u56DE\u5230\u7E3D\u89BD</button></div><div id="logs-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u72C0\u614B\u8207\u7D50\u7B97</div><h2 class="page-title">\u57F7\u884C\u7D00\u9304</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 8h4M10 12h4M10 16h4"/></svg></span></div><p class="surface-note">\u4F9D\u5E8F\u67E5\u770B\u9001\u51FA\u3001\u63A5\u53D7\u53CA\u7D50\u7B97\u4E8B\u4EF6\u3002</p><div class="log-status"><span class="log-label">\u76EE\u524D\u72C0\u614B</span><div id="status"></div></div><div id="events" aria-label="\u64CD\u4F5C\u4E8B\u4EF6\u6642\u9593\u8EF8"></div></div>
-<div class="compact-actions"><button id="open-report">\u6253\u958B\u6230\u7E3E</button><button id="compact-stop">\u505C\u6B62</button></div><button id="resize-panel" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section><section id="risk-dialog" class="risk-overlay" role="dialog" aria-modal="true" aria-labelledby="risk-title" hidden><div class="risk-card"><div class="risk-emblem"><svg class="risk-triangle" viewBox="0 0 80 72" aria-hidden="true"><path d="M40 5 75 65H5Z"/><path class="risk-mark" d="M40 24v20"/><circle class="risk-point" cx="40" cy="54" r="3"/></svg></div><h2 id="risk-title">\u4F7F\u7528\u98A8\u96AA\u8072\u660E</h2><p class="risk-copy">\u81EA\u884C\u6C7A\u5B9A\u958B\u555F,\u6240\u6709\u98A8\u96AA\u81EA\u884C\u627F\u64D4,\u4E0D\u4FDD\u8B49\u7A69\u5B9A\u7372\u5229,\u7A0B\u5F0F\u4E0D\u8CA0\u76F8\u95DC\u8CAC\u4EFB</p><div id="risk-stake-summary" class="risk-stake-summary" hidden></div><p id="risk-time-summary" class="field-note"></p><p id="risk-doubling-warning" class="doubling-reminder" hidden></p><label class="risk-ack"><input id="ack" type="checkbox"><span>\u6211\u5DF2\u95B1\u8B80\u4E26\u4E86\u89E3\u4E0A\u8FF0\u98A8\u96AA</span></label><div class="risk-actions"><button id="risk-cancel">\u53D6\u6D88</button><button id="risk-confirm" disabled>\u78BA\u8A8D\u958B\u59CB</button></div></div></section><section id="report-shell" class="report-shell" hidden><header class="report-head"><div><div class="surface-kicker">\u672C\u5DE5\u5177\u8A18\u9304</div><h2>\u4E0B\u6CE8\u6230\u7E3E</h2></div><button id="close-report">\u8FD4\u56DE\u7E3D\u89BD</button></header><div class="report-filter"><label>\u904A\u6232\u5927\u5EF3 <select id="report-lobby"><option value="all">\u5168\u90E8</option><option value="DG">DG</option></select></label><label>\u904A\u6232\u985E\u578B <select id="report-game"><option value="all">\u5168\u90E8</option><option value="baccarat">\u767E\u5BB6\u6A02</option></select></label><button id="report-today" class="selected">\u4ECA\u65E5</button><button id="report-yesterday">\u6628\u65E5</button><button id="report-week">\u4E03\u65E5</button></div><div class="report-tabs"><button id="report-bets" class="selected">\u6295\u6CE8\u8A18\u9304</button><button id="report-transactions" hidden>\u4EA4\u6613\u8A18\u9304</button></div><div id="report-note" class="report-note">\u672C\u5DE5\u5177\u8A18\u9304\u7684\u4E0B\u6CE8\u8207\u7D50\u679C</div>${OFFICIAL_TURNOVER_REPORT_HTML}<div class="report-scroll"><div id="report-body" class="report-cards"></div><div id="report-empty" class="report-empty" hidden>\u5C1A\u7121\u8A18\u9304</div></div><footer class="report-footer"><span id="report-total">\u5408\u8A08 \u2014</span><span><button id="report-prev">\u4E0A\u4E00\u9801</button> <span id="report-page">1 / 1</span> <button id="report-next">\u4E0B\u4E00\u9801</button></span></footer><button id="resize-report" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section>`;
+<div id="rooms-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u4E0B\u6CE8\u7BC4\u570D</div><h2 class="page-title">\u9078\u64C7\u684C\u53F0</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span></div><div class="selection-control"><span id="selection-mode">\u81EA\u52D5\u627E\u684C \xB7 \u958B\u653E\u4E0B\u6CE8\u5C31\u52A0\u5165</span><button id="auto-tables">\u81EA\u52D5\u627E\u684C\u4E2D</button></div><div id="rooms-hint" class="surface-note page-caption">\u5148\u53D6\u6D88\u4E00\u684C\uFF0C\u518D\u9078\u5176\u4ED6\u684C\u3002</div><div id="rooms"></div><button id="rooms-back" class="rooms-back">\u5B8C\u6210\u9078\u64C7\uFF0C\u56DE\u5230\u7E3D\u89BD</button></div><div id="logs-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u72C0\u614B\u8207\u7D50\u7B97</div><h2 class="page-title">\u57F7\u884C\u7D00\u9304</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 8h4M10 12h4M10 16h4"/></svg></span></div><p class="surface-note">\u4F9D\u5E8F\u67E5\u770B\u9001\u51FA\u3001\u63A5\u53D7\u53CA\u7D50\u7B97\u4E8B\u4EF6\u3002</p><div class="log-status"><span class="log-label">\u76EE\u524D\u72C0\u614B</span><div id="status"></div></div><button id="last-usage" aria-label="\u67E5\u770B\u4F7F\u7528\u7D00\u9304" style="flex:none;width:100%;margin:6px 0;padding:6px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\u5C1A\u7121\u4E0A\u6B21\u4F7F\u7528\u7D00\u9304</button><div id="events" aria-label="\u64CD\u4F5C\u4E8B\u4EF6\u6642\u9593\u8EF8"></div></div>
+<div class="compact-actions"><button id="open-report">\u6253\u958B\u6230\u7E3E</button><button id="compact-stop">\u505C\u6B62</button></div><button id="resize-panel" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section><section id="risk-dialog" class="risk-overlay" role="dialog" aria-modal="true" aria-labelledby="risk-title" hidden><div class="risk-card"><div class="risk-emblem"><svg class="risk-triangle" viewBox="0 0 80 72" aria-hidden="true"><path d="M40 5 75 65H5Z"/><path class="risk-mark" d="M40 24v20"/><circle class="risk-point" cx="40" cy="54" r="3"/></svg></div><h2 id="risk-title">\u4F7F\u7528\u98A8\u96AA\u8072\u660E</h2><p class="risk-copy">\u81EA\u884C\u6C7A\u5B9A\u958B\u555F,\u6240\u6709\u98A8\u96AA\u81EA\u884C\u627F\u64D4,\u4E0D\u4FDD\u8B49\u7A69\u5B9A\u7372\u5229,\u7A0B\u5F0F\u4E0D\u8CA0\u76F8\u95DC\u8CAC\u4EFB</p><div id="risk-stake-summary" class="risk-stake-summary" hidden></div><p id="risk-time-summary" class="field-note"></p><p id="risk-doubling-warning" class="doubling-reminder" hidden></p><label class="risk-ack"><input id="ack" type="checkbox"><span>\u6211\u5DF2\u95B1\u8B80\u4E26\u4E86\u89E3\u4E0A\u8FF0\u98A8\u96AA</span></label><div class="risk-actions"><button id="risk-cancel">\u53D6\u6D88</button><button id="risk-confirm" disabled>\u78BA\u8A8D\u958B\u59CB</button></div></div></section><section id="report-shell" class="report-shell" hidden><header class="report-head"><div><div class="surface-kicker">\u672C\u5DE5\u5177\u8A18\u9304</div><h2>\u4E0B\u6CE8\u6230\u7E3E</h2></div><button id="close-report">\u8FD4\u56DE\u7E3D\u89BD</button></header><div class="report-filter"><label>\u904A\u6232\u5927\u5EF3 <select id="report-lobby"><option value="all">\u5168\u90E8</option><option value="DG">DG</option></select></label><label>\u904A\u6232\u985E\u578B <select id="report-game"><option value="all">\u5168\u90E8</option><option value="baccarat">\u767E\u5BB6\u6A02</option></select></label><button id="report-today" class="selected">\u4ECA\u65E5</button><button id="report-yesterday">\u6628\u65E5</button><button id="report-week">\u4E03\u65E5</button></div><div class="report-tabs"><button id="report-bets" class="selected">\u6295\u6CE8\u8A18\u9304</button><button id="report-usage">\u4F7F\u7528\u7D00\u9304</button><button id="report-transactions" hidden>\u4EA4\u6613\u8A18\u9304</button></div><div id="report-note" class="report-note">\u672C\u5DE5\u5177\u8A18\u9304\u7684\u4E0B\u6CE8\u8207\u7D50\u679C</div>${OFFICIAL_TURNOVER_REPORT_HTML}<div class="report-scroll"><div id="report-body" class="report-cards"></div><div id="report-empty" class="report-empty" hidden>\u5C1A\u7121\u8A18\u9304</div></div><footer class="report-footer"><span id="report-total">\u5408\u8A08 \u2014</span><span><button id="report-prev">\u4E0A\u4E00\u9801</button> <span id="report-page">1 / 1</span> <button id="report-next">\u4E0B\u4E00\u9801</button></span></footer><button id="resize-report" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section>`;
 
   // lib/dg-panel-data.ts
   function cumulativePoints(bets, width = 250, height = 43) {
@@ -2508,9 +2650,10 @@ ${DG_MOBILE_LAYOUT_CSS}
       console.error("[DG] \u76EE\u524D\u4E0D\u662F\u8F09\u5165\u5B8C\u6210\u7684 DG Laya \u9801\u9762\u3002\u8ACB\u9078\u64C7 DG \u5206\u9801\uFF0FConsole \u57F7\u884C\u74B0\u5883\u3002");
       return;
     }
-    const ledger = new DgBetLedger(window.__DG_LEDGER_STATE__);
+    const ledger = new DgBetLedger();
     const pokerTracker = createDgPokerTracker();
     const sessionTimer = createDgSessionTimer();
+    const usageHistory = createDgUsageHistory();
     let running = false, busy = false, disposed = false, epoch = 0, once = false;
     let base = 100, scope = "global", provider = "combined", roomCount = "1", maxStake = 1e5, minSeconds = 6;
     let singleStaking = "martingale", userZoom = 1;
@@ -2530,8 +2673,24 @@ ${DG_MOBILE_LAYOUT_CSS}
     const tableWait = /* @__PURE__ */ new Map(), lastNotice = /* @__PURE__ */ new Map();
     const watchedRounds = /* @__PURE__ */ new Map();
     const money = (n) => n.toLocaleString("zh-TW");
+    function persistUsage() {
+      usageHistory.sync(ledger.state.bets);
+      try {
+        if (persistKey) localStorage.setItem(persistKey + ".usage.v1", JSON.stringify(usageHistory.snapshot()));
+      } catch {
+      }
+    }
+    function finishUsage() {
+      sessionTimer.stop();
+      usageHistory.finish(sessionTimer.view().elapsedMs);
+      persistUsage();
+    }
     function persist() {
-      window.__DG_LEDGER_STATE__ = ledger.state;
+      if (persistKey) {
+        window.__DG_LEDGER_STATE__ = ledger.state;
+        window.__DG_LEDGER_PERSIST_KEY__ = persistKey;
+      }
+      persistUsage();
       try {
         if (persistKey) sessionStorage.setItem(persistKey, JSON.stringify(ledger.state));
       } catch {
@@ -2545,7 +2704,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       render();
     }
     function stop(reason = "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u9001\u51FA\u7684\u4E0B\u6CE8\u4ECD\u7B49\u5F85\u5E73\u53F0\u7D50\u7B97") {
-      sessionTimer.stop();
+      finishUsage();
       running = false;
       once = false;
       riskApproved = false;
@@ -2692,10 +2851,18 @@ ${DG_MOBILE_LAYOUT_CSS}
       let h = 2166136261;
       for (const ch of ident) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
       persistKey = `dg.singlepage.ledger.v1.${h >>> 0}`;
+      let savedLedger = null;
       try {
         const saved = JSON.parse(sessionStorage.getItem(persistKey) ?? "null");
-        if (saved?.version === 1 && !ledger.state.bets.length) ledger.state = new DgBetLedger(saved).state;
+        if (saved?.version === 1) savedLedger = saved;
       } catch {
+      }
+      const scopedMemory = window.__DG_LEDGER_PERSIST_KEY__ === persistKey ? window.__DG_LEDGER_STATE__ : null;
+      ledger.state = new DgBetLedger(savedLedger ?? scopedMemory).state;
+      try {
+        usageHistory.load(JSON.parse(localStorage.getItem(persistKey + ".usage.v1") ?? "null"));
+      } catch {
+        usageHistory.load(null);
       }
       ledger.state.roundStartedAt ??= mountedAt;
       migrateSingleChain();
@@ -2730,7 +2897,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         log(`${receipt.bet.tableId}\uFF5C${receipt.bet.gameNo}\uFF5C${receipt.accepted ? "\u5E73\u53F0\u5DF2\u63A5\u53D7\u4E0B\u6CE8" : "\u5E73\u53F0\u62D2\u7D55\u6216\u91D1\u984D\u4E0D\u7B26\uFF0C\u672A\u6A19\u793A\u6210\u529F"}\uFF5C${receipt.bet.side} ${money(receipt.bet.amount)}`);
         if (!receipt.accepted) stop("\u672C\u7B46\u4E0B\u6CE8\u672A\u78BA\u8A8D\u63A5\u53D7\uFF0C\u5DF2\u505C\u6B62\uFF1B\u4E0D\u81EA\u52D5\u91CD\u9001");
         if (once) {
-          sessionTimer.stop();
+          finishUsage();
           running = false;
           once = false;
         }
@@ -2810,6 +2977,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       lastNotice.delete(tableId);
       const bet = ledger.reserve(tableId, gameNo, side, base, scope, stakingMode());
       bet.provider = provider;
+      usageHistory.addBet(bet);
       persist();
       contexts.set(bet.key, card);
       const internalSide = side === "\u838A" ? "Banker" : "Player";
@@ -2925,6 +3093,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     const cleanupFeedback = installDgButtonFeedback(shadow);
     const cleanupTouchScroll = installDgPanelTouchScroll(shadow);
     const mountedAt = Date.now();
+    let summarySince = mountedAt;
     const q = (id) => shadow.getElementById(id);
     q("panel").classList.toggle("compact", compact);
     q("count").value = q("parallel-count").value = roomCount;
@@ -3022,6 +3191,10 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
     }
     function start(testOnce = false) {
+      if (running) {
+        log("\u76EE\u524D\u4ECD\u5728\u57F7\u884C\uFF0C\u8ACB\u5148\u505C\u6B62\u518D\u91CD\u65B0\u958B\u59CB\uFF1B\u4F7F\u7528\u6642\u9593\u4E0D\u91CD\u8A2D");
+        return;
+      }
       if (window.__DG_MANUAL_CAPTURE_ACTIVE__) {
         log("\u624B\u52D5\u6D41\u7A0B\u8A18\u9304\u4E2D\uFF0C\u4E0D\u80FD\u958B\u555F\u81EA\u52D5\u4E0B\u6CE8");
         return;
@@ -3117,7 +3290,10 @@ ${DG_MOBILE_LAYOUT_CSS}
         persist();
         log(`\u65B0\u958B\u59CB\uFF1A\u57FA\u672C\u55AE\u6CE8 ${money(base)}\uFF0C\u914D\u6CE8\u5F9E\u7B2C1\u968E\u958B\u59CB\uFF1B\u4E0B\u6CE8\u7D00\u9304\u4FDD\u7559`);
       }
+      summarySince = Date.now();
+      usageHistory.begin(durationMinutes);
       sessionTimer.start(durationMinutes);
+      persistUsage();
       running = true;
       once = testOnce;
       epoch++;
@@ -3148,7 +3324,11 @@ ${DG_MOBILE_LAYOUT_CSS}
       if (disposed) return;
       renderOfficialTurnover(shadow, official.view());
       const usage = sessionTimer.view();
+      if (usageHistory.updateElapsed(usage.elapsedMs)) persistUsage();
       q("session-elapsed").textContent = usage.elapsedText;
+      const lastUsage = usageHistory.view().find((r) => r.state !== "active");
+      q("last-usage").textContent = lastUsage ? `\u4E0A\u6B21 ${lastUsage.elapsedText} \xB7 \u5DF2\u7D50\u7B97\u8F38\u8D0F ${lastUsage.pnl > 0 ? "+" : ""}${money(lastUsage.pnl)}${lastUsage.pendingCount ? " \xB7 \u5F85\u7D50\u7B97 " + lastUsage.pendingCount : ""}${lastUsage.uncertainCount ? " \xB7 \u672A\u78BA\u5B9A " + lastUsage.uncertainCount : ""}` : "\u5C1A\u7121\u4E0A\u6B21\u4F7F\u7528\u7D00\u9304";
+      q("last-usage").title = q("last-usage").textContent;
       const limit = usage.started ? usage.minutes : (() => {
         try {
           return parseDurationMinutes(q("duration-minutes").value);
@@ -3159,7 +3339,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       q("session-remaining").textContent = usage.started && usage.remainingMs !== null ? `\u5269\u9918 ${formatDuration(usage.remainingMs)}` : limit === null ? "\u6642\u9650\u683C\u5F0F\u932F\u8AA4" : limit ? `\u8A2D\u5B9A ${limit} \u5206\u9418` : "\u4E0D\u9650\u6642";
       q("duration-minutes").disabled = running || busy;
       q("status").textContent = `${running ? "\u57F7\u884C\u4E2D" : "\u5DF2\u505C\u6B62"}\uFF5C${userStatus(status)}`;
-      q("hero-status").textContent = userStatus(status);
+      let heroText = userStatus(status);
       const eventSignature = logs.join("\n");
       if (eventSignature !== lastRenderedEvents) {
         lastRenderedEvents = eventSignature;
@@ -3177,6 +3357,14 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
       for (const button of q("rooms").querySelectorAll("button")) button.disabled = selectionLocked();
       const cards = boards(), chosen = cards.filter((c) => selected.has(String(c.tableId))), pending = ledger.pending();
+      const tableNames = {};
+      for (const c of [...contexts.values(), ...cards]) tableNames[String(c.tableId)] = c.gameInfo?.tableName || String(c.tableId);
+      const summaries = dgBetSummary(ledger.state.bets, tableNames, summarySince);
+      const normalStatus = /平台已接受下注|結算 |已直接傳送|自動找桌|同時 \d+|找到 |新開始/.test(status);
+      if (summaries.success && normalStatus) heroText = "\u4E0B\u6CE8\u6210\u529F\uFF1A" + summaries.success;
+      else if (summaries.confirming && normalStatus) heroText = "\u5F85\u78BA\u8A8D\uFF1A" + summaries.confirming;
+      if (q("hero-status").textContent !== heroText) q("hero-status").textContent = heroText;
+      q("hero-status").title = heroText;
       const currentBet = pending[0];
       const focus = chosen.find((c) => String(c.tableId) === currentBet?.tableId) ?? chosen.find(ready) ?? chosen[0];
       const previewBase = !running && !pending.length && Number.isSafeInteger(Number(q("base").value)) && Number(q("base").value) > 0 ? Number(q("base").value) : base;
@@ -3212,8 +3400,8 @@ ${DG_MOBILE_LAYOUT_CSS}
       q("parallel-count").disabled = q("count").disabled = q("scan").disabled = selectionLocked();
       q("parallel-summary").textContent = `\u5DF2\u9078 ${selected.size} \u684C \xB7 \u5F85\u63A5\u53D7 ${pending.filter((b) => b.state !== "accepted").length} \xB7 \u5F85\u7D50\u7B97 ${pending.filter((b) => b.state === "accepted").length}`;
       const rec = focus ? strategyFor(focus, previewProvider) : null;
-      q("focus-table").textContent = focus ? focus.gameInfo.tableName || String(focus.tableId) : "\u5C0B\u627E\u53EF\u4E0B\u6CE8\u684C";
-      q("focus-phase").textContent = currentBet ? currentBet.state === "accepted" ? "\u7B49\u5F85\u7D50\u7B97" : currentBet.state === "uncertain" ? "\u56DE\u8986\u672A\u78BA\u5B9A" : "\u7B49\u5F85\u63A5\u53D7" : focus && ready(focus) ? "\u53EF\u4E0B\u6CE8" : "\u6E96\u5099\u4E2D";
+      let focusTableText = focus ? focus.gameInfo.tableName || String(focus.tableId) : "\u5C0B\u627E\u53EF\u4E0B\u6CE8\u684C";
+      let focusPhaseText = currentBet ? currentBet.state === "accepted" ? "\u7B49\u5F85\u7D50\u7B97" : currentBet.state === "uncertain" ? "\u56DE\u8986\u672A\u78BA\u5B9A" : "\u7B49\u5F85\u63A5\u53D7" : focus && ready(focus) ? "\u53EF\u4E0B\u6CE8" : "\u6E96\u5099\u4E2D";
       const focusId = focus ? String(focus.tableId) : "";
       const shownLevel = currentBet?.level ?? amountLevel(focusId, previewScope);
       const shownStaking = currentBet?.staking ?? stakingMode();
@@ -3237,9 +3425,16 @@ ${DG_MOBILE_LAYOUT_CSS}
         q("focus-meta").textContent += original && original !== strategyLabel ? `\uFF5C\u6B64\u55AE ${original}` : "";
       }
       if (!focus && !currentBet) {
-        q("focus-phase").textContent = cards.length ? "\u7B49\u5F85\u958B\u76E4" : "\u684C\u5361\u672A\u63A5\u901A";
+        focusPhaseText = cards.length ? "\u7B49\u5F85\u958B\u76E4" : "\u684C\u5361\u672A\u63A5\u901A";
         q("focus-meta").textContent = cards.length ? `\u5DF2\u8FA8\u8B58 ${cards.length} \u684C\uFF1B\u7B49\u5F85\u958B\u76E4\u3001\u8DB3\u5920\u5012\u6578\u8207\u724C\u8DEF` : "\u5C1A\u672A\u8FA8\u8B58\u539F\u751F\u684C\u5361\uFF0C\u672A\u9001\u55AE\uFF1B\u8ACB\u532F\u51FA\u9023\u7DDA\u8A3A\u65B7";
       }
+      if (summaries.waiting || summaries.confirming || summaries.uncertain) {
+        focusTableText = summaries.waiting ? "\u7B49\u5F85\u7D50\u7B97\uFF1A" : summaries.uncertain ? "\u672A\u78BA\u5B9A\uFF1A" : "\u5F85\u78BA\u8A8D\uFF1A";
+        focusPhaseText = summaries.waiting ? summaries.waiting + (summaries.confirming ? " \uFF5C\u5F85\u78BA\u8A8D\uFF1A" + summaries.confirming : "") + (summaries.uncertain ? " \uFF5C\u672A\u78BA\u5B9A\uFF1A" + summaries.uncertain : "") : summaries.uncertain ? summaries.uncertain + (summaries.confirming ? " \uFF5C\u5F85\u78BA\u8A8D\uFF1A" + summaries.confirming : "") : summaries.confirming;
+      }
+      if (q("focus-table").textContent !== focusTableText) q("focus-table").textContent = focusTableText;
+      if (q("focus-phase").textContent !== focusPhaseText) q("focus-phase").textContent = focusPhaseText;
+      q("focus-phase").title = focusTableText + focusPhaseText;
       const stage = currentBet ? currentBet.state === "accepted" ? 3 : 2 : running ? 1 : 0;
       for (let i = 1; i <= 4; i++) q("step-" + i).classList.toggle("active", i <= stage);
       const seeking = running && !currentBet;
@@ -3498,7 +3693,55 @@ ${DG_MOBILE_LAYOUT_CSS}
       renderReport();
       fitPanel();
     }
+    function renderUsageReport() {
+      const all = usageHistory.view();
+      const records = usageHistoryInPeriod(all, reportPeriod);
+      const perPage = 6, pages = Math.max(1, Math.ceil(records.length / perPage));
+      reportPage = Math.max(0, Math.min(reportPage, pages - 1));
+      const previous2 = all.find((r) => r.state !== "active");
+      const fmt = (at) => new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(at);
+      q("report-body").replaceChildren();
+      for (const r of records.slice(reportPage * perPage, (reportPage + 1) * perPage)) {
+        const row = document.createElement("article");
+        row.className = "report-card";
+        row.dataset.usageId = r.id;
+        const head2 = document.createElement("div");
+        head2.className = "report-card-head";
+        const title = document.createElement("strong");
+        title.textContent = r.state === "active" ? "\u672C\u6B21\u4F7F\u7528" : r.id === previous2?.id ? "\u4E0A\u6B21\u4F7F\u7528" : "\u4F7F\u7528\u7D00\u9304";
+        const state = document.createElement("span");
+        state.className = "report-state";
+        state.textContent = (r.state === "active" ? "\u57F7\u884C\u4E2D" : r.state === "interrupted" ? "\u9801\u9762\u4E2D\u65B7" : "\u5DF2\u505C\u6B62") + (r.pendingCount ? ` \xB7 \u5F85\u7D50\u7B97 ${r.pendingCount}` : "") + (r.uncertainCount ? ` \xB7 \u672A\u78BA\u5B9A ${r.uncertainCount}` : "");
+        head2.append(title, state);
+        const values = document.createElement("div");
+        values.className = "report-values";
+        const used = document.createElement("span");
+        used.textContent = `\u4F7F\u7528 ${r.elapsedText}`;
+        const result = document.createElement("strong");
+        result.textContent = `\u5DF2\u7D50\u7B97\u8F38\u8D0F ${r.pnl > 0 ? "+" : ""}${money(r.pnl)}`;
+        if (r.pnl) result.className = r.pnl > 0 ? "green" : "red";
+        values.append(used, result);
+        const time = document.createElement("div");
+        time.className = "report-card-time";
+        time.textContent = `\u958B\u59CB ${fmt(r.createdAt)} \xB7 ${r.endedAt === null ? "\u5C1A\u672A\u505C\u6B62" : "\u505C\u6B62 " + fmt(r.endedAt)} \xB7 \u8D0F/\u8F38 ${r.wins}/${r.losses}`;
+        row.append(head2, values, time);
+        q("report-body").append(row);
+      }
+      q("report-empty").hidden = records.length > 0;
+      q("report-empty").textContent = "\u5C1A\u7121\u4F7F\u7528\u7D00\u9304\uFF1B\u78BA\u8A8D\u958B\u59CB\u5F8C\u5EFA\u7ACB\u65B0\u7684\u4E00\u6B21";
+      q("report-note").textContent = "\u6BCF\u6B21\u4F7F\u7528\u6642\u9593\u8207\u5DF2\u7D50\u7B97\u8F38\u8D0F\uFF1B\u5F85\u7D50\u7B97\u56DE\u586B\u539F\u6B21\uFF0C\u4E0D\u8A08\u5165\u4E0B\u4E00\u6B21";
+      q("report-total").textContent = `${records.length} \u6B21 \xB7 \u5DF2\u7D50\u7B97\u8F38\u8D0F ${money(records.reduce((sum, r) => sum + r.pnl, 0))}`;
+      q("report-page").textContent = `${reportPage + 1} / ${pages}`;
+    }
     function renderReport() {
+      q("report-usage").classList.toggle("selected", reportTab === "usage");
+      q("report-bets").classList.toggle("selected", reportTab === "bets");
+      q("report-transactions").classList.toggle("selected", reportTab === "transactions");
+      for (const period of ["today", "yesterday", "week"]) q("report-" + period).classList.toggle("selected", period === reportPeriod);
+      if (reportTab === "usage") {
+        renderUsageReport();
+        return;
+      }
       const perPage = 6;
       const records = reportTab === "bets" ? periodBets(ledger.state.bets, reportPeriod).slice().reverse() : [];
       const pages = Math.max(1, Math.ceil(records.length / perPage));
@@ -3550,6 +3793,11 @@ ${DG_MOBILE_LAYOUT_CSS}
     };
     q("official-refresh").onclick = () => official.refresh(true);
     q("open-records").onclick = q("open-report").onclick = openReport;
+    q("last-usage").onclick = () => {
+      reportTab = "usage";
+      reportPage = 0;
+      openReport();
+    };
     q("compact-stop").onclick = () => q("stop-now").click();
     q("close-report").onclick = () => {
       q("report-shell").hidden = true;
@@ -3557,6 +3805,11 @@ ${DG_MOBILE_LAYOUT_CSS}
     };
     for (const period of ["today", "yesterday", "week"]) q("report-" + period).onclick = () => {
       reportPeriod = period;
+      reportPage = 0;
+      renderReport();
+    };
+    q("report-usage").onclick = () => {
+      reportTab = "usage";
       reportPage = 0;
       renderReport();
     };
@@ -3642,6 +3895,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       start: () => requestStart(),
       stop,
       scan,
+      usageHistory: () => usageHistory.view(),
       stakeDiagnostics,
       officialTurnover: official.view,
       refreshOfficialTurnover: () => official.refresh(true),
@@ -3657,7 +3911,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         return c ? provider === "counting" || provider === "parity" ? strategyFor(c).reason || "\u7B49\u5F85\u5BE6\u969B\u724C\u5F35" : providerAnalysisText(provider, { results: roads(c) }) : "\u672A\u627E\u5230\u684C\u53F0";
       },
       dispose: () => {
-        sessionTimer.stop();
+        finishUsage();
         running = false;
         disposed = true;
         epoch++;

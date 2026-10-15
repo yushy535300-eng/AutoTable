@@ -244,7 +244,6 @@ export default function AutoBacScreen() {
         <Text style={s.captureNote}>只讀記錄 · 工具自動下注已停止</Text>
         <Pressable onPress={recordManualFlow} style={s.retry}><Text style={s.toolText}>結束記錄並下載</Text></Pressable>
       </View>:null}
-      {selected === 'DG' && !installed && gameUrl ? <View testID="dg-install-status" style={s.mtStatus}><Text style={s.mtStatusText}>{message || 'DG 遊戲引擎載入中 · 尚未啟用自動操作'}</Text>{/^\/ddnewwap\//.test(gameUrl) ? <Pressable onPress={exportMobileSourceList}><Text style={s.toolText}>匯出 DG 手機腳本清單（不含憑證）</Text></Pressable> : null}</View> : null}
       {error ? <View style={s.errorBox}><Text style={s.errorText}>{error}</Text><View style={{gap: 6}}><Pressable onPress={() => retry()} disabled={authInvalid} style={s.retry}><Text style={s.toolText}>重試</Text></Pressable><Pressable onPress={exportConnectionDiagnosis} style={s.retry}><Text style={s.toolText}>匯出連線診斷</Text></Pressable></View></View> : null}
       {departure ? <View testID="pending-departure" style={s.pendingBox}>
         <Text style={s.errorText}>已停止新增下注。仍有待結算／未核對注單，請先在面板核對後再切換、重連或登出。這些操作不會取消已接受的注單。</Text>

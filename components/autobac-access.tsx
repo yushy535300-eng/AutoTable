@@ -1,3 +1,4 @@
+import { AutoBacLogo } from './autobac-logo';
 import { createElement } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -31,11 +32,11 @@ export function AutoBacAccess(props: AccessProps) {
         <View style={s.topline}><Text style={s.topText}>AUTOBAC · ACCESS</Text><View style={s.safe}><View style={s.safeDot} /><Text style={s.safeText}>安全驗證</Text></View></View>
         <View style={[s.hero, !desktop && s.heroMobile]}>
           <View style={[s.brand, !desktop && s.brandMobile, narrow && s.brandNarrow]}>
-            <View style={[s.icon, !desktop && s.iconMobile, narrow && s.iconNarrow]}><Text style={s.iconText}>AB</Text></View>
-            <View style={s.brandCopy}>
+            <AutoBacLogo testID="autobac-access-logo" style={[s.icon, !desktop && s.iconMobile, narrow && s.iconNarrow]} />
+            <View style={[s.brandCopy, !desktop && s.brandCopyMobile]}>
               {desktop ? <Text style={s.kicker}>REAL-TIME CONTROL ROOM</Text> : null}
               <Text testID="autobac-access-title" numberOfLines={1} style={[s.title, !desktop && s.titleMobile, narrow && s.titleNarrow]}>百家樂自動下注</Text>
-              <Text style={[s.subtitle, !desktop && s.subtitleMobile]}>安全登入後進入 DG</Text>
+              <Text testID="autobac-access-subtitle" numberOfLines={1} style={[s.subtitle, !desktop && s.subtitleMobile, narrow && s.subtitleNarrow]}>安全登入後進入 DG</Text>
             </View>
           </View>
           <View style={s.heroDivider} />
@@ -52,7 +53,7 @@ export function AutoBacAccess(props: AccessProps) {
         <TextInput testID="autobac-username" accessibilityLabel="TZ 帳號" placeholder="輸入 TZ 帳號" placeholderTextColor="#6d7f78" autoCapitalize="none" autoCorrect={false} autoComplete="username" value={props.username} onChangeText={props.onUsername} style={s.input} />
         <Text style={s.label}>TZ 密碼</Text>
         <View style={s.passwordWrap}><TextInput testID="autobac-password" accessibilityLabel="TZ 密碼" placeholder="輸入密碼" placeholderTextColor="#6d7f78" autoCapitalize="none" autoCorrect={false} autoComplete="current-password" secureTextEntry={!props.showPassword} value={props.password} onChangeText={props.onPassword} onSubmitEditing={props.onSubmit} style={s.passwordInput} /><Pressable accessibilityRole="button" accessibilityLabel={props.showPassword ? '隱藏密碼' : '顯示密碼'} onPress={props.onTogglePassword} style={s.eye}><MaterialIcons name={props.showPassword ? 'visibility-off' : 'visibility'} size={19} color="#899d93" /></Pressable></View>
-        <Pressable testID="autobac-login" accessibilityRole="button" accessibilityLabel="安全登入" onPress={props.onSubmit} disabled={props.submitting} style={({ pressed }) => [s.submit, pressed && s.pressed, props.submitting && s.disabled]}><MaterialIcons name="verified-user" size={18} color="#12281e" /><Text style={s.submitText}>{props.submitting ? '登入中…' : '安全登入'}</Text></Pressable>
+        <Pressable testID="autobac-login" accessibilityRole="button" accessibilityLabel="安全登入" onPress={props.onSubmit} disabled={props.submitting} style={({ pressed }) => [s.submit, pressed && s.pressed, props.submitting && s.disabled]}><MaterialIcons name="verified-user" size={18} color="#FFFFFF" /><Text style={s.submitText}>{props.submitting ? '登入中…' : '安全登入'}</Text></Pressable>
         {props.error ? <Text accessibilityRole="alert" style={s.error}>{props.error}</Text> : null}
         <View style={s.footer}><View style={s.footerLeft}><MaterialIcons name="lock" size={11} color="#88968c" /><Text style={s.privacy}>密碼只會用於本次登入驗證</Text></View><Text style={s.footerDivider}>|</Text><Pressable accessibilityRole="link" accessibilityLabel="LINE 聯絡" onPress={() => openBrandLink('line')}><Text style={s.lineLink}>需要協助？LINE 聯絡</Text></Pressable></View>
       </View>
@@ -70,10 +71,10 @@ const s = StyleSheet.create({
   safe: { flexDirection: 'row', alignItems: 'center', gap: 4 }, safeDot: { width: 4, height: 4, borderRadius: 3, backgroundColor: '#39E0B0' }, safeText: { color: '#39E0B0', fontSize: 9, fontWeight: '800' },
   hero: { flexDirection: 'row', alignItems: 'stretch', width: '100%', marginBottom: 16, minHeight: 112 }, heroMobile: { minHeight: 88 },
   brand: { flex: 1.9, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 13, paddingLeft: 2, paddingRight: 12 },
-  brandMobile: { flex: 1.35, gap: 8, paddingRight: 6, paddingLeft: 0 }, brandNarrow: { gap: 6, paddingRight: 4 }, brandCopy: { flexShrink: 1, minWidth: 0 },
+  brandMobile: { flex: 1.35, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 6, paddingRight: 6, paddingLeft: 0 }, brandNarrow: { gap: 6, paddingRight: 4 }, brandCopy: { flexShrink: 1, minWidth: 0 }, brandCopyMobile: { width: '100%' },
   icon: { width: 56, height: 56, borderRadius: 14, borderWidth: 1, borderColor: '#315D79', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(5,20,31,.34)', flexShrink: 0 }, iconMobile: { width: 40, height: 40, borderRadius: 10 }, iconNarrow: { width: 32, height: 32 }, iconText: { color: '#EAF8FF', fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
-  kicker: { color: '#8DB4CE', fontSize: 10, letterSpacing: 1.5, fontWeight: '800' }, title: { color: '#F5F8FA', fontSize: 24, fontWeight: '900', marginTop: 5 }, titleMobile: { fontSize: 18, letterSpacing: -0.4, marginTop: 2 }, titleNarrow: { fontSize: 11 },
-  subtitle: { color: '#91A7B8', fontSize: 11.5, marginTop: 4 }, subtitleMobile: { fontSize: 9.5, letterSpacing: -0.2 }, heroDivider: { width: 1, marginVertical: 7, backgroundColor: 'rgba(111,169,197,.25)' },
+  kicker: { color: '#8DB4CE', fontSize: 10, letterSpacing: 1.5, fontWeight: '800' }, title: { color: '#F5F8FA', fontSize: 24, fontWeight: '900', marginTop: 5 }, titleMobile: { fontSize: 20, letterSpacing: -0.4, marginTop: 2 }, titleNarrow: { fontSize: 16 },
+  subtitle: { color: '#91A7B8', fontSize: 11.5, marginTop: 4 }, subtitleMobile: { fontSize: 13, letterSpacing: -0.2 }, subtitleNarrow: { fontSize: 11.5 }, heroDivider: { width: 1, marginVertical: 7, backgroundColor: 'rgba(111,169,197,.25)' },
   threadsCard: { flex: 0.9, minWidth: 142, marginLeft: 13, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(108,177,205,.40)', backgroundColor: 'rgba(3,18,29,.32)', justifyContent: 'center' }, threadsCardMobile: { flex: 0.72, minWidth: 118, marginLeft: 6, paddingHorizontal: 8, paddingVertical: 7 },
   threadsHead: { flexDirection: 'row', alignItems: 'center', gap: 6 }, threadsLogo: { width: 32, height: 32, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(224,243,255,.52)', backgroundColor: 'rgba(255,255,255,.07)', alignItems: 'center', justifyContent: 'center' }, threadsLabel: { color: '#A9C4D6', fontSize: 9, fontWeight: '900', letterSpacing: 1.35 },
   threadsName: { color: '#F5F9FC', fontSize: 17, fontWeight: '900', marginTop: 6 }, threadsAccount: { color: '#56D7D0', fontSize: 14, fontWeight: '900', marginTop: 1 },

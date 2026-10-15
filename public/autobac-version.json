@@ -1,6 +1,6 @@
 {
-  "version": "3.2.7-dg-timer-scroll",
-  "header": "fixed-single-row; platform-reconnect-help-logout; no-collapse-no-dropdown",
+  "version": "3.2.9-dg-auto-logo",
+  "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
     "DG"
@@ -19,6 +19,12 @@
   "mtStatus": "disabled-source-retained",
   "usageTimer": "per-run-HH:MM:SS; integer-minute-limit; zero-unlimited; freeze-on-stop; pre-send-deadline-guard",
   "panelTouchScroll": "shadow-local-single-finger; header-drag-preserved",
-  "homeIcon": "original-preserved-pending-preview-confirmation",
-  "homeScreenName": "百家自動下注"
+  "homeIcon": "approved-D-black-gold-AUTO; versioned-iOS180-Android192-512-favicon",
+  "homeScreenName": "百家自動下注",
+  "tableSummary": "accepted-only; all-pending-tables; single-line-horizontal-scroll; unchanged-panel-size",
+  "installOverlay": "hidden-ui-only; runtime-gates-preserved",
+  "selectText": "16px-mobile; fixed-height-padding-corrected; short-captions",
+  "brandLogo": "same-approved-image-access-choice-header; original-mark-size",
+  "accessCaptions": "separate-single-line; larger-mobile-font; white-login-check",
+  "usageHistory": "new-start-resets; previous-duration-and-settled-pnl; late-settlement-original-run; browser-account-scoped"
 }

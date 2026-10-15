@@ -4457,7 +4457,7 @@ export default function HomeScreen() {
       link.rel = "apple-touch-icon";
       document.head.appendChild(link);
     }
-    link.href = "/apple-touch-icon.png";
+    link.href = "/autobac-auto-v329-180.png";
     let favicon = document.querySelector(
       'link[rel="icon"]',
     ) as HTMLLinkElement | null;
@@ -4466,7 +4466,7 @@ export default function HomeScreen() {
       favicon.rel = "icon";
       document.head.appendChild(favicon);
     }
-    favicon.href = "/apple-touch-icon.png";
+    favicon.href = "/autobac-auto-v329-32.png";
   }, []);
   // Unmount only: close the one authoritative socket. Do not tie cleanup to React state changes.
   useEffect(

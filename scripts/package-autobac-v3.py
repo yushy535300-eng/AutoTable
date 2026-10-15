@@ -15,12 +15,12 @@ root_files = {
     '.dockerignore', '.gitignore', 'Dockerfile', 'package.json', 'pnpm-lock.yaml',
     'app.config.ts', 'app.config.js', 'babel.config.js', 'metro.config.js',
     'tsconfig.json', 'start-production.sh', 'AUTOBAC-V3-DEPLOY.md',
-    'DG-MOBILE-DIAGNOSTIC.md', 'RENDER_DEPLOY.md', 'AUTOBAC-DEPLOY.md', 'AUTOBAC-V3.1-DEPLOY.md', 'AUTOBAC-V3.2-DEPLOY.md', 'AUTOBAC-V3.2.2-DEPLOY.md', 'AUTOBAC-V3.2.3-DEPLOY.md', 'AUTOBAC-V3.2.4-DEPLOY.md', 'AUTOBAC-V3.2.5-DEPLOY.md', 'AUTOBAC-V3.2.6-DEPLOY.md', 'AUTOBAC-V3.2.7-DEPLOY.md', 'LICENSE', 'README.md',
+    'DG-MOBILE-DIAGNOSTIC.md', 'RENDER_DEPLOY.md', 'AUTOBAC-DEPLOY.md', 'AUTOBAC-V3.1-DEPLOY.md', 'AUTOBAC-V3.2-DEPLOY.md', 'AUTOBAC-V3.2.2-DEPLOY.md', 'AUTOBAC-V3.2.3-DEPLOY.md', 'AUTOBAC-V3.2.4-DEPLOY.md', 'AUTOBAC-V3.2.5-DEPLOY.md', 'AUTOBAC-V3.2.6-DEPLOY.md', 'AUTOBAC-V3.2.7-DEPLOY.md', 'AUTOBAC-V3.2.8-DEPLOY.md', 'AUTOBAC-V3.2.9-DEPLOY.md', 'LICENSE', 'README.md',
     'tailwind.config.js', 'theme.config.js', 'theme.config.d.ts', 'global.css',
     'nativewind-env.d.ts', 'expo-env.d.ts', 'drizzle.config.ts', 'eslint.config.js',
 }
 source_dirs = {'app', 'components', 'lib', 'server', 'shared', 'constants', 'hooks', 'scripts', 'drizzle'}
-validated_tests = {'dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
+validated_tests = {'dg-usage-history.test.ts','dg-bet-summary.test.ts','dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
 source_extensions = {'.ts', '.tsx', '.js', '.cjs', '.mjs', '.css', '.sql', '.md', '.py', '.sh'}
 required_source_data = {'lib/sa-table-labels.json'}
 asset_dirs = {'assets', 'public'}
@@ -73,6 +73,9 @@ for name in root_files:
         entries[name] = file.read_bytes()
 
 required = [
+    "lib/dg-usage-history.ts", "tests/dg-usage-history.test.ts",
+    "AUTOBAC-V3.2.9-DEPLOY.md", "components/autobac-logo.tsx", "assets/images/autobac-auto-master.png", "assets/images/autobac-auto-v329.png", "public/manifest-v329.webmanifest", "public/autobac-auto-v329-180.png", "public/autobac-auto-v329-192.png", "public/autobac-auto-v329-512.png", "public/autobac-auto-v329-32.png", "scripts/prepare-auto-icons.py",
+    'AUTOBAC-V3.2.8-DEPLOY.md', 'lib/dg-bet-summary.ts', 'tests/dg-bet-summary.test.ts', 'scripts/test-dg-panel-text.cjs', 'assets/images/line-official.png', 'assets/LINE-LOGO-SOURCE.md',
     'public/manifest.webmanifest', 'tests/dg-homescreen.test.ts',
     'AUTOBAC-V3.2.7-DEPLOY.md', 'lib/dg-session-timer.ts', 'lib/dg-panel-touch-scroll.ts', 'tests/dg-session-timer.test.ts', 'scripts/test-dg-panel-usage.cjs',
     'AUTOBAC-V3.2.5-DEPLOY.md', 'tests/dg-official-turnover.test.ts',

@@ -93,9 +93,25 @@ async function swipe(page, client, locator, direction) {
       assert.equal(state.l.bets[0].state, 'settled', 'accepted order still settles after automatic stop');
       assert.equal(state.s.usage.elapsedText, '00:01:00', 'stopped usage freezes');
       assert.equal(state.count, 1, 'next round cannot send after expiry');
+      const previousUsage = await timed.evaluate(() => window.__DG_SINGLEPAGE__.usageHistory()[0]);
+      assert.equal(previousUsage.elapsedText, '00:01:00');
+      assert.equal(previousUsage.pnl, 100, 'late settlement belongs to completed usage');
+      assert.equal(previousUsage.pendingCount, 0);
+      const timedHost = timed.locator('#__dg_singlepage_panel__');
+      await timedHost.locator('#nav-logs').click();
+      await timedHost.locator('#last-usage').click();
+      const usageReportText=await timedHost.locator('#report-body').innerText();
+      assert(usageReportText.includes('00:01:00') && usageReportText.includes('已結算輸贏 +100'), usageReportText || 'Empty usage report');
+      await timedHost.locator('#close-report').click();
       await timed.evaluate(() => document.getElementById('__dg_singlepage_panel__').shadowRoot.getElementById('duration-minutes').value = '2');
       await approveAndStart(timed);
       assert.equal(await timed.evaluate(() => window.__DG_SINGLEPAGE__.status().usage.elapsedText), '00:00:00', 'new run resets usage');
+      const restartedUsage = await timed.evaluate(() => window.__DG_SINGLEPAGE__.usageHistory());
+      assert.equal(restartedUsage[0].elapsedText, '00:00:00');
+      assert.equal(restartedUsage[0].pnl, 0);
+      assert.equal(restartedUsage[1].pnl, 100, 'new start never clears last run winnings');
+      assert.equal(restartedUsage[1].elapsedText, '00:01:00');
+      console.log('PASS usage history: last duration/profit in record UI, pending settlement backfill, restart zero, previous record retained.');
       console.log('PASS production native timer: 1-minute auto stop, no extra packet, accepted lock preserved and settled, frozen display, restart resets. Offline only.');
     } finally { await stopAndClose(timed); }
     const deadline = await openOfflinePage(context, [{ id: 703, method: 'ei' }, { id: 704, method: 'Ki' }]);

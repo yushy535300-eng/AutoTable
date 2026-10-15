@@ -225,6 +225,28 @@ function assertDgliMobileBody(raw) {
     assert.match(await page.evaluate(() => navigator.userAgent), /Android.*Mobile/i, "real Android Mobile UA is active");
     assert.deepEqual(await page.evaluate(() => ({ width: innerWidth, height: innerHeight })), { width: 440, height: 894 }, "mobile viewport is 440x894");
 
+    for (const width of [320, 390, 440]) {
+      await page.setViewportSize({width, height:894}); await page.waitForTimeout(250);
+      await page.waitForFunction(() => [...document.querySelector('[data-testid="autobac-access-logo"]').querySelectorAll('img')].some(img => img.complete && img.naturalWidth === 512));
+      const captions = await page.evaluate(() => ['autobac-access-title','autobac-access-subtitle'].map(id => {
+        const node = document.querySelector(`[data-testid="${id}"]`), css = getComputedStyle(node);
+        const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d');
+        ctx.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+        const spacing = parseFloat(css.letterSpacing) || 0;
+        return {id, text:node.textContent, font:parseFloat(css.fontSize), width:node.clientWidth,
+          textWidth:ctx.measureText(node.textContent).width + Math.max(0,node.textContent.length-1)*spacing,
+          height:node.getBoundingClientRect().height, y:node.getBoundingClientRect().y};
+      }));
+      assert.equal(captions[0].text, '百家樂自動下注');
+      assert.equal(captions[1].text, '安全登入後進入 DG');
+      assert(captions[0].font >= 16 && captions[1].font >= 11.5, 'Two captions are larger at '+width);
+      for (const c of captions) assert(c.textWidth <= c.width+2 && c.height < c.font*1.7, 'One complete line, no wrapping or ellipsis: '+JSON.stringify(c));
+      assert(captions[1].y>captions[0].y, 'Captions stay separate');
+      fs.mkdirSync('/home/ubuntu/autobac-v329-check', {recursive:true});
+      await page.screenshot({path:`/home/ubuntu/autobac-v329-check/login-${width}.png`,fullPage:true});
+    }
+    await page.setViewportSize({width:440,height:894});
+
     // Match the established login-only test: normal keyboard events followed by
     // a Tab blur.  Never inject state, access React fibers, or call handlers.
     const username = page.getByPlaceholder("輸入 TZ 帳號", { exact: true });
@@ -251,6 +273,7 @@ function assertDgliMobileBody(raw) {
     assert.equal(await page.getByTestId('choose-mt').count(), 0, 'MT entry is removed in DG-only release');
     assert.equal(await page.getByText('選擇 DG 或 MT', {exact: false}).count(), 0, 'No dual-platform instruction');
 
+    assert.equal(await page.getByTestId("autobac-choice-logo").count(), 1, "Chosen AUTO logo also replaces platform choice AB");
     await page.getByTestId("choose-dg").click();
     await page.waitForSelector('iframe[title="DG 真人遊戲"]', { timeout: 30000 });
     await page.waitForFunction(() => {
@@ -310,19 +333,26 @@ function assertDgliMobileBody(raw) {
     assert.equal(afterIdle.sent, 0, "idle panel remains unable to send cmd 6 without explicit user start/confirmation");
 
     const header=page.getByTestId('autobac-game-header');
+    await page.waitForFunction(() => [...document.querySelector('[data-testid="autobac-header-logo"]').querySelectorAll('img')].some(img=>img.complete&&img.naturalWidth===512));
     await frame.evaluate(()=>window.__HEADER_DOCUMENT_MARKER__='same-loaded-game');
     for(const size of [{width:320,height:700},{width:390,height:844},{width:440,height:894},{width:1440,height:960}]){
       await page.setViewportSize(size);await page.waitForTimeout(180);
       const bounds=await header.boundingBox();assert.equal(Math.round(bounds.height),56);assert.equal(Math.round(bounds.y),0);
-      assert.equal(await header.getByRole('button').count(),4,'Exactly four direct actions, not a dropdown');
+      assert.equal(await header.getByRole('button').count(),4,'Four direct controls remain, plus the LINE link');
+      assert.equal(await header.getByTestId('header-line').count(),1,'Official LINE link is visible before platform');
+      assert.equal(await page.getByTestId('dg-install-status').count(),0,'No technical waiting overlay');
       assert(await header.evaluate(node=>node.scrollWidth<=node.clientWidth+1),'No header overflow at '+size.width);
-      const boxes=await Promise.all(['header-platform','header-reconnect','header-help','header-logout'].map(id=>page.getByTestId(id).boundingBox()));
+      const boxes=await Promise.all(['header-line','header-platform','header-reconnect','header-help','header-logout'].map(id=>page.getByTestId(id).boundingBox()));
       assert(boxes.every(box=>box&&Math.abs(box.y-boxes[0].y)<1&&box.x>=0&&box.x+box.width<=size.width+1),'Buttons fit one visible row');
       if(size.width<850)assert(boxes.every(box=>box.width>=44&&box.height>=44),'Mobile buttons are 44px touch targets');
-      for(const id of ['header-collapse-mobile','header-collapse','header-line','header-register','header-diagnostics','header-record'])assert.equal(await header.getByTestId(id).count(),0);
+      assert(Math.abs(boxes[0].width-boxes[1].width)<1&&Math.abs(boxes[0].height-boxes[1].height)<1,'LINE and platform controls have equal size');
+      for(const id of ['header-collapse-mobile','header-collapse','header-register','header-diagnostics','header-record'])assert.equal(await header.getByTestId(id).count(),0);
       assert.equal(await page.locator('[aria-label="展開頂部資訊"]').count(),0,'No expanded/collapsed header state');
     }
     await page.setViewportSize({width:440,height:894});
+    await header.getByTestId('header-line').evaluate(node=>{window.__LINE_OPEN_TEST__=[];window.open=(...args)=>window.__LINE_OPEN_TEST__.push(args);});
+    await header.getByTestId('header-line').click();
+    assert.equal(await page.evaluate(()=>window.__LINE_OPEN_TEST__[0][0]),'https://line.me/ti/p/k2pkYGXGL3','LINE opens owner contact without changing game');
     await page.getByTestId('header-help').click();
     await page.getByTestId('autobac-help').waitFor();
     await page.getByRole('button',{name:'關閉使用說明',exact:true}).click();

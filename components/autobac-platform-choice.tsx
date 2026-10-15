@@ -1,3 +1,4 @@
+import { AutoBacLogo } from './autobac-logo';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { AUTOBAC_BRAND as brand, openBrandLink } from '@/lib/autobac-brand';
@@ -20,7 +21,7 @@ export function AutoBacPlatformChoice({ onChoose, onLogout }: { onChoose: (platf
 
     <View style={[s.top, mobile && s.topMobile, short && s.topShort]}>
       <View style={s.wordmark}>
-        <View style={s.mark}><Text style={s.markText}>AB</Text></View>
+        <AutoBacLogo testID="autobac-choice-logo" style={s.mark} />
         <View>
           <Text style={s.brand}>{brand.name}</Text>
           <Text style={s.subBrand}>{brand.chineseName}</Text>
