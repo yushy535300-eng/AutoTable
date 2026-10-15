@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "百家自動下注",
+  "short_name": "百家自動下注",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "zh-Hant",
+  "background_color": "#101816",
+  "theme_color": "#101816",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

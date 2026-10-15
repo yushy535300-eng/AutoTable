@@ -92,6 +92,7 @@ async function openOfflinePage(browser, cards) {
       getBetEncryptInfo(secret, payload) {
         // Recorded plaintext fixture payload: deliberately parsable, never encrypted.
         nativeCalls.push({ kind: "encrypt", secret, payload });
+        if (window.__testBuilderAdvance) { window.__testOffset += window.__testBuilderAdvance; window.__testBuilderAdvance = 0; }
         return payload;
       }
     };
@@ -389,6 +390,9 @@ async function testManualAttribution(browser) {
   } finally { await stopAndClose(extra); }
 }
 
+module.exports = { openOfflinePage, configure, approveAndStart, waitForCmd6, stopAndClose, packetPayload };
+
+if (require.main === module) {
 let browser;
 (async () => {
   assert.equal(typeof mobileBuilders.ei, "string", "ei fixture method is available");
@@ -406,3 +410,5 @@ let browser;
   console.error(error.stack || error);
   process.exitCode = 1;
 });
+
+}

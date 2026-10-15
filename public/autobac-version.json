@@ -1,5 +1,5 @@
 {
-  "version": "3.2.6-dg-only",
+  "version": "3.2.7-dg-timer-scroll",
   "header": "fixed-single-row; platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -16,5 +16,9 @@
   "diagnosticVersionSource": "public-build-metadata",
   "pageScale": "fixed-viewport-1; mobile-text-fields-16px; OS-accessibility-zoom-not-controlled",
   "verification": "DG-native-public-source-and-offline-regression; MT-disabled",
-  "mtStatus": "disabled-source-retained"
+  "mtStatus": "disabled-source-retained",
+  "usageTimer": "per-run-HH:MM:SS; integer-minute-limit; zero-unlimited; freeze-on-stop; pre-send-deadline-guard",
+  "panelTouchScroll": "shadow-local-single-finger; header-drag-preserved",
+  "homeIcon": "original-preserved-pending-preview-confirmation",
+  "homeScreenName": "百家自動下注"
 }

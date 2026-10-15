@@ -1,12 +1,12 @@
-# AutoBac v3.2.6：DG專用版部署
+# AutoBac v3.2.7：DG計時與滑動修正版部署
 
-詳細說明：[AUTOBAC-V3.2.6-DEPLOY.md](./AUTOBAC-V3.2.6-DEPLOY.md)。本版只提供DG，MT入口及正式代理已停用，原始碼保留供日後重接。
+詳細說明：[AUTOBAC-V3.2.7-DEPLOY.md](./AUTOBAC-V3.2.7-DEPLOY.md)。本版只提供DG，MT入口及正式代理已停用，原始碼保留供日後重接。
 
 1. 先停止新增下注，核對平台正式待結算注單，備份原GitHub專案。
 2. 解壓完整網站ZIP，內容更新到原GitHub根目錄，不只上傳ZIP、不多一層資料夾。
 3. Render保留原Docker Web Service與 `Dockerfile Path=./Dockerfile`，使用原Dockerfile預設啟動時Docker Command留空。
 4. 原環境變數、資料庫及白名單保留，`TZ_WHITELIST_ENABLED=true`。不用加Render金鑰或代理設定。
-5. 提交及部署後核對 `/api/health` 正常、`/autobac-version.json` 為 `3.2.6-dg-only` 且platforms只有DG。
+5. 提交及部署後核對 `/api/health` 正常、`/autobac-version.json` 為 `3.2.7-dg-timer-scroll` 且platforms只有DG。
 6. 關閉已核對完成的舊遊戲頁，依原白名單重新登入進入DG；面板初始停止，不需Console。
 
 若原服務使用Native Node：

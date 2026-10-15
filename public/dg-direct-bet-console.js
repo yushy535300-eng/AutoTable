@@ -24,6 +24,119 @@ SOFTWARE.
 /* DG 單頁多桌直接訊息下注；僅在 DG 同源頁面執行。不點擊按鈕；初始為停止。 */
 "use strict";
 (() => {
+  // lib/dg-session-timer.ts
+  function parseDurationMinutes(value) {
+    const text = String(value ?? "").trim();
+    if (text === "") return 0;
+    if (!/^\d+$/.test(text)) throw new Error("\u81EA\u52D5\u505C\u6B62\u6642\u9593\u9808\u70BA\u6574\u6578\u5206\u9418\uFF1B0\u6216\u7559\u7A7A\u4EE3\u8868\u4E0D\u9650\u6642");
+    const minutes = Number(text);
+    if (!Number.isSafeInteger(minutes) || !Number.isSafeInteger(minutes * 6e4)) throw new Error("\u81EA\u52D5\u505C\u6B62\u6642\u9593\u8D85\u51FA\u53EF\u7528\u7BC4\u570D");
+    return minutes;
+  }
+  function formatDuration(ms) {
+    const seconds = Math.floor(Math.max(0, ms) / 1e3);
+    return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map((n) => String(n).padStart(2, "0")).join(":");
+  }
+  function createDgSessionTimer(wallNow = () => Date.now(), monoNow = () => performance.now()) {
+    let running = false, started = false, startWall = 0, startMono = 0, elapsedMs = 0, minutes = 0;
+    function elapsed() {
+      if (running) elapsedMs = Math.max(elapsedMs, 0, wallNow() - startWall, monoNow() - startMono);
+      return elapsedMs;
+    }
+    return {
+      start(value) {
+        minutes = parseDurationMinutes(value);
+        startWall = wallNow();
+        startMono = monoNow();
+        elapsedMs = 0;
+        started = true;
+        running = true;
+      },
+      stop() {
+        elapsed();
+        running = false;
+      },
+      expired() {
+        return running && minutes > 0 && elapsed() >= minutes * 6e4;
+      },
+      view() {
+        const usedMs = elapsed();
+        return { running, started, minutes, elapsedMs: usedMs, remainingMs: minutes > 0 ? Math.max(0, minutes * 6e4 - usedMs) : null, elapsedText: formatDuration(usedMs) };
+      }
+    };
+  }
+
+  // lib/dg-panel-touch-scroll.ts
+  function installDgPanelTouchScroll(root) {
+    let state = null;
+    const ownerWindow = root.ownerDocument.defaultView;
+    function start(event) {
+      state = null;
+      if (event.touches.length !== 1) return;
+      event.stopPropagation();
+      const elements = event.composedPath().filter((node) => node instanceof ownerWindow.HTMLElement);
+      const target = elements[0];
+      if (!target || target.closest('#head,.resize-grip,input,textarea,select,[contenteditable="true"]')) return;
+      const vertical = [], horizontal = [];
+      for (const element of elements) {
+        if (element === root.host) break;
+        const style = ownerWindow.getComputedStyle(element);
+        if (/auto|scroll/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 1) vertical.push(element);
+        if (/auto|scroll/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 1) horizontal.push(element);
+      }
+      if (!vertical.length && !horizontal.length) return;
+      const touch = event.touches[0];
+      state = { x: touch.clientX, y: touch.clientY, lastX: touch.clientX, lastY: touch.clientY, vertical, horizontal, axis: null };
+    }
+    function move(event) {
+      if (event.touches.length !== 1) {
+        state = null;
+        return;
+      }
+      event.stopPropagation();
+      if (!state) return;
+      const touch = event.touches[0];
+      const dx = touch.clientX - state.x, dy = touch.clientY - state.y;
+      if (!state.axis) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 6) return;
+        state.axis = Math.abs(dy) >= Math.abs(dx) ? "y" : "x";
+      }
+      const candidates = state.axis === "y" ? state.vertical : state.horizontal;
+      if (!candidates.length) return;
+      if (event.cancelable) event.preventDefault();
+      let remaining = state.axis === "y" ? state.lastY - touch.clientY : state.lastX - touch.clientX;
+      for (const element of candidates) {
+        const scale = element.offsetHeight > 0 ? element.getBoundingClientRect().height / element.offsetHeight : 1;
+        const divisor = scale > 0 ? scale : 1;
+        const before = state.axis === "y" ? element.scrollTop : element.scrollLeft;
+        if (state.axis === "y") element.scrollTop += remaining / divisor;
+        else element.scrollLeft += remaining / divisor;
+        const after = state.axis === "y" ? element.scrollTop : element.scrollLeft;
+        remaining -= (after - before) * divisor;
+        if (Math.abs(remaining) < 1) break;
+      }
+      state.lastX = touch.clientX;
+      state.lastY = touch.clientY;
+    }
+    function end(event) {
+      if (event.touches.length > 0) return;
+      event.stopPropagation();
+      if (state?.axis && event.cancelable) event.preventDefault();
+      state = null;
+    }
+    root.addEventListener("touchstart", start, { passive: true });
+    root.addEventListener("touchmove", move, { passive: false });
+    root.addEventListener("touchend", end, { passive: false });
+    root.addEventListener("touchcancel", end, { passive: false });
+    return () => {
+      root.removeEventListener("touchstart", start);
+      root.removeEventListener("touchmove", move);
+      root.removeEventListener("touchend", end);
+      root.removeEventListener("touchcancel", end);
+      state = null;
+    };
+  }
+
   // lib/dg-scene.ts
   function readDgSceneNodes(stage, maximum = 12e3) {
     const output = [], queue = [stage], queued = /* @__PURE__ */ new Set([stage]);
@@ -779,7 +892,11 @@ SOFTWARE.
 
   // lib/dg-panel-mobile-layout.ts
   var DG_MOBILE_LAYOUT_CSS = `
+.session-time{display:flex;justify-content:space-between;gap:5px;flex:none;padding:5px 0;font-size:9px;color:#b5c4bd;line-height:1.4;flex-wrap:wrap}.session-time strong{font-variant-numeric:tabular-nums;color:#e8dcc1}.session-time>span:last-child{margin-left:auto}
 /* Applied last for both platforms. Content must not disappear behind a fixed footer. */
+:host{touch-action:pan-x pan-y}
+#overview-page,#settings-page,#logs-page,#rooms-page,.report-scroll,#events{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#table-strip{touch-action:pan-x;-webkit-overflow-scrolling:touch}
 #panel.compact:not(.mini) #overview-page{overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #panel.compact.mini{width:210px;height:auto;min-height:228px;max-height:none;padding:9px;overflow:visible}
 #panel.compact.mini #overview-page{flex:none;height:auto;min-height:0;overflow:visible;gap:5px}
@@ -1411,15 +1528,15 @@ ${DG_MOBILE_LAYOUT_CSS}
 <section id="panel">
 <header id="head"><div class="topline"><span class="brand"><i class="dot"></i><span id="brand-count">\u767E\u5BB6\u5DE5\u7A0B\u5E2B</span></span><div class="tools"><button id="nav-mode" aria-label="\u5207\u63DB\u7E3D\u89BD\u8207\u5C0F\u7A97" title="\u5207\u63DB\u7E3D\u89BD\uFF0F\u767E\u5BB6\u5DE5\u7A0B\u5E2B"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16"/></svg></button><button id="nav-overview" aria-label="\u7E3D\u89BD" title="\u7E3D\u89BD"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3z M9 20v-7h6v7"/></svg><span>\u7E3D\u89BD</span></button><button id="nav-settings" aria-label="\u8A2D\u5B9A" title="\u8A2D\u5B9A"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2 3 3-1 2 3-2 3 2 3-2 3-3-1-2 3-2-3-3 1-2-3 2-3-2-3 2-3 3 1z"/><circle cx="12" cy="11" r="3"/></svg><span>\u8A2D\u5B9A</span></button><button id="nav-logs" aria-label="\u7D00\u9304" title="\u7D00\u9304"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14 M5 12h14 M5 18h14"/></svg><span>\u7D00\u9304</span></button><button id="zoom-out" aria-label="\u5207\u63DB\u8FF7\u4F60\u9762\u677F" title="\u5207\u63DB\u8FF7\u4F60\u9762\u677F"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg><span id="mini-label">\u8FF7\u4F60</span></button><button id="zoom-in" aria-label="\u653E\u5927\u9762\u677F" title="\u653E\u5927"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14 M12 5v14"/></svg></button><button id="hide" aria-label="\u6536\u5408" title="\u6536\u5408"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></div></div></header>
 <div id="overview-page"><div class="headline"><div class="titlebar"><h1 class="title">\u7E3D\u89BD</h1><span class="drag-mark">\u2725</span></div><div class="balance"><small>\u5E73\u53F0\u9918\u984D</small><strong id="balance">\u2014</strong></div></div>
-<div class="parallel-control"><label for="parallel-count">\u540C\u6642\u4E0B\u6CE8</label><select id="parallel-count" aria-label="\u540C\u6642\u4E0B\u6CE8\u684C\u6578"><option value="1" selected>1 \u684C</option><option value="3">3 \u684C</option><option value="5">5 \u684C</option><option value="all">\u6240\u6709\u5DF2\u8F09\u5165\u684C</option></select><button id="choose-tables" class="choose-tables">\u9078\u684C</button></div><div id="parallel-summary" class="parallel-summary">\u9010\u684C\u7368\u7ACB \xB7 \u4E0D\u7B49\u5176\u4ED6\u684C\u7D50\u7B97</div><div class="mini-context"><span id="mini-running">\u5DF2\u505C\u6B62</span><span>\u9918\u984D <strong id="mini-balance">\u2014</strong></span></div><div class="hero"><div class="hero-head"><span id="run-pill" class="pill idle">\u25CF \u5DF2\u505C\u6B62</span><span id="method" class="method">\u7B56\u7565 \xB7 \u99AC\u4E01</span></div><div id="search-box" class="search-box" hidden><div><strong id="search-title">\u6311\u9078\u4E0B\u6CE8\u684C\u2026</strong><div class="search-note">\u7B49\u5F85\u9078\u5B9A\u684C\u53F0\u958B\u653E\u4E0B\u6CE8</div></div><span class="search-icon">\u2315</span></div><div id="target-box"><div class="strategy-preview"><span>\u7B56\u7565</span><span class="strategy-badge"><i id="main-strategy-logo" class="provider-logo" aria-hidden="true"></i><strong id="current-strategy">AI\u7D9C\u5408</strong></span></div><div class="roomline"><span id="focus-table">\u7B49\u5F85\u684C\u53F0</span><span id="focus-phase" class="subtle">\u6E96\u5099\u4E2D</span></div><div class="amount-explainer"><span id="amount-label">\u4E0B\u4E00\u6CE8\u9810\u89BD</span><span id="amount-rule">\u57FA\u672C 100 \xB7 \u7B2C1\u968E \xD71</span></div><div class="bet-main"><div class="bet-value"><strong id="amount" class="amount">100</strong><span id="side" class="side">\u2014</span></div><div id="ring" class="ring"><span id="countdown" class="ring-inner">\u2014</span></div></div><div id="focus-meta" class="meta">\u7B49\u5019\u771F\u5BE6\u724C\u8DEF\u8207\u5012\u6578</div><div class="steps"><i id="step-1" class="step"></i><i id="step-2" class="step"></i><i id="step-3" class="step"></i><i id="step-4" class="step"></i></div><div class="step-labels"><span>\u8B80\u53D6</span><span>\u7B49\u5F85\u63A5\u53D7</span><b>\u7D50\u7B97</b><span>\u7E8C\u6CE8</span></div></div><div id="cards-result" class="cards-result" hidden><div class="cards-side"><small>\u9592 PLAYER</small><strong id="player-point">\u2014</strong><div id="player-cards" class="cards-line"></div></div><div class="cards-side"><small>\u838A BANKER</small><strong id="banker-point">\u2014</strong><div id="banker-cards" class="cards-line"></div></div></div><div class="metrics"><div><small>\u7D2F\u8A08\u6700\u4F4E</small><strong id="range-low" class="meter-value">\u2014</strong></div><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="hero-pnl">0</strong></div><div><small>\u7D2F\u8A08\u6700\u9AD8</small><strong id="range-high" class="meter-value">\u2014</strong></div></div><input id="pnl-range" class="range-view" type="range" min="0" max="100" value="50" tabindex="-1" aria-label="\u672C\u8F2A\u7D50\u7B97\u5728\u986F\u793A\u7BC4\u570D\u5167\u7684\u4F4D\u7F6E" aria-readonly="true"><button id="stop-now" class="main-action"><span class="action-mark">\u25B6</span>\u958B\u59CB\u81EA\u52D5\u4E0B\u6CE8</button><div id="hero-status" class="statusline" role="button" tabindex="0" aria-label="\u67E5\u770B\u5B8C\u6574\u72C0\u614B">\u5C1A\u672A\u9001\u51FA\u4E0B\u6CE8</div></div>
+<div class="parallel-control"><label for="parallel-count">\u540C\u6642\u4E0B\u6CE8</label><select id="parallel-count" aria-label="\u540C\u6642\u4E0B\u6CE8\u684C\u6578"><option value="1" selected>1 \u684C</option><option value="3">3 \u684C</option><option value="5">5 \u684C</option><option value="all">\u6240\u6709\u5DF2\u8F09\u5165\u684C</option></select><button id="choose-tables" class="choose-tables">\u9078\u684C</button></div><div id="parallel-summary" class="parallel-summary">\u9010\u684C\u7368\u7ACB \xB7 \u4E0D\u7B49\u5176\u4ED6\u684C\u7D50\u7B97</div><div class="mini-context"><span id="mini-running">\u5DF2\u505C\u6B62</span><span>\u9918\u984D <strong id="mini-balance">\u2014</strong></span></div><div class="session-time" aria-label="\u672C\u6B21\u4F7F\u7528\u6642\u9593"><span>\u4F7F\u7528\u6642\u9593 <strong id="session-elapsed">00:00:00</strong></span><span id="session-remaining">\u4E0D\u9650\u6642</span></div><div class="hero"><div class="hero-head"><span id="run-pill" class="pill idle">\u25CF \u5DF2\u505C\u6B62</span><span id="method" class="method">\u7B56\u7565 \xB7 \u99AC\u4E01</span></div><div id="search-box" class="search-box" hidden><div><strong id="search-title">\u6311\u9078\u4E0B\u6CE8\u684C\u2026</strong><div class="search-note">\u7B49\u5F85\u9078\u5B9A\u684C\u53F0\u958B\u653E\u4E0B\u6CE8</div></div><span class="search-icon">\u2315</span></div><div id="target-box"><div class="strategy-preview"><span>\u7B56\u7565</span><span class="strategy-badge"><i id="main-strategy-logo" class="provider-logo" aria-hidden="true"></i><strong id="current-strategy">AI\u7D9C\u5408</strong></span></div><div class="roomline"><span id="focus-table">\u7B49\u5F85\u684C\u53F0</span><span id="focus-phase" class="subtle">\u6E96\u5099\u4E2D</span></div><div class="amount-explainer"><span id="amount-label">\u4E0B\u4E00\u6CE8\u9810\u89BD</span><span id="amount-rule">\u57FA\u672C 100 \xB7 \u7B2C1\u968E \xD71</span></div><div class="bet-main"><div class="bet-value"><strong id="amount" class="amount">100</strong><span id="side" class="side">\u2014</span></div><div id="ring" class="ring"><span id="countdown" class="ring-inner">\u2014</span></div></div><div id="focus-meta" class="meta">\u7B49\u5019\u771F\u5BE6\u724C\u8DEF\u8207\u5012\u6578</div><div class="steps"><i id="step-1" class="step"></i><i id="step-2" class="step"></i><i id="step-3" class="step"></i><i id="step-4" class="step"></i></div><div class="step-labels"><span>\u8B80\u53D6</span><span>\u7B49\u5F85\u63A5\u53D7</span><b>\u7D50\u7B97</b><span>\u7E8C\u6CE8</span></div></div><div id="cards-result" class="cards-result" hidden><div class="cards-side"><small>\u9592 PLAYER</small><strong id="player-point">\u2014</strong><div id="player-cards" class="cards-line"></div></div><div class="cards-side"><small>\u838A BANKER</small><strong id="banker-point">\u2014</strong><div id="banker-cards" class="cards-line"></div></div></div><div class="metrics"><div><small>\u7D2F\u8A08\u6700\u4F4E</small><strong id="range-low" class="meter-value">\u2014</strong></div><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="hero-pnl">0</strong></div><div><small>\u7D2F\u8A08\u6700\u9AD8</small><strong id="range-high" class="meter-value">\u2014</strong></div></div><input id="pnl-range" class="range-view" type="range" min="0" max="100" value="50" tabindex="-1" aria-label="\u672C\u8F2A\u7D50\u7B97\u5728\u986F\u793A\u7BC4\u570D\u5167\u7684\u4F4D\u7F6E" aria-readonly="true"><button id="stop-now" class="main-action"><span class="action-mark">\u25B6</span>\u958B\u59CB\u81EA\u52D5\u4E0B\u6CE8</button><div id="hero-status" class="statusline" role="button" tabindex="0" aria-label="\u67E5\u770B\u5B8C\u6574\u72C0\u614B">\u5C1A\u672A\u9001\u51FA\u4E0B\u6CE8</div></div>
 <div class="section-head"><span>\u672C\u8F2A</span><button id="open-records" class="gold">\u8A18\u9304</button></div><div class="stats"><div><small>\u672C\u8F2A\u640D\u76CA</small><strong id="round-pnl">0</strong></div><div><small>\u8D0F\uFF0F\u8F38\uFF0F\u548C</small><strong id="round-wlt">0/0/0</strong></div><div><small>\u5BE6\u969B\u547D\u4E2D\u7387</small><strong id="hit-rate">\u2014</strong></div></div>${OFFICIAL_TURNOVER_HTML}<div id="chart-wrap" class="chart-wrap"><div class="chart-head"><span>\u7D2F\u8A08\u640D\u76CA\u8D70\u52E2</span><strong id="chart-last">\u2014</strong></div><svg id="pnl-chart" class="chart" viewBox="0 0 250 43" preserveAspectRatio="none" aria-label="\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u66F2\u7DDA"><path class="chart-grid" d="M0 4H250 M0 14H250 M0 25H250 M0 39H250 M0 4V39 M62 4V39 M125 4V39 M188 4V39 M250 4V39"/><line id="chart-zero" class="chart-zero" x1="0" x2="250" y1="22" y2="22"/><polygon id="chart-area" class="chart-area" points=""/><polyline id="pnl-line" points="0,22 250,22"/><circle id="chart-dot" class="chart-dot" cx="250" cy="22" r="1.6"/></svg><div id="chart-empty" class="chart-empty">\u7B49\u5F85\u9996\u7B46\u7D50\u7B97</div><div class="chart-foot"><span id="chart-low">\u6700\u4F4E \u2014</span><span id="chart-count">0 \u6CE8</span><span id="chart-high">\u6700\u9AD8 \u2014</span></div></div><div class="section-head"><span>\u5DF2\u9078\u684C\u53F0</span><button id="edit-rooms" class="gold">\u5168\u90E8</button></div><div id="tables"></div><div id="table-strip" aria-label="\u5DF2\u9078\u684C\u53F0"></div><div class="footer">\u63A8\u85A6\u50C5\u4F9B\u53C3\u8003</div></div>
 <div id="settings-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u57F7\u884C\u53C3\u6578</div><h2 class="page-title">\u7B56\u7565\u8A2D\u5B9A</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg></span></div><p class="surface-note">\u8A2D\u5B9A\u65B9\u5411\u4F86\u6E90\u3001\u55AE\u6CE8\u91D1\u984D\u8207\u505C\u6B62\u689D\u4EF6\u3002</p><div class="form-body">
 <section class="form-section"><h3 class="form-section-head"><i>01</i>\u63A8\u85A6\u8207\u914D\u6CE8</h3><label for="single-staking">\u914D\u6CE8\u65B9\u5F0F</label><select id="single-staking"><option value="flat">\u5E73\u6CE8 \xB7 \u6BCF\u7B46\u56FA\u5B9A\u91D1\u984D</option><option value="martingale" selected>\u99AC\u4E01 \xB7 \u8DE8\u623F\u63A5\u7E8C\uFF0C\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E</option><option value="doubling">\u500D\u6295\u6CD5 \xB7 1\u21922\u21924\u21928\uFF0C\u8F38\u5F8C\u52A0\u500D\u3001\u8D0F\u91CD\u7F6E</option></select><label for="start-mode">\u958B\u59CB\u65B9\u5F0F</label><select id="start-mode"><option value="fresh" selected>\u65B0\u958B\u59CB \xB7 \u9996\u7B46\u57FA\u672C\u55AE\u6CE8</option><option value="resume">\u7E8C\u63A5 \xB7 \u6CBF\u7528\u914D\u6CE8\u968E\u7D1A</option></select><div id="staking-hint" class="settings-added"></div><p id="doubling-reminder" class="doubling-reminder" hidden>\u4F7F\u7528\u500D\u6295\u6CD5\uFF0C\u8ACB\u8A2D\u5B9A\u6B62\u76C8\u8207\u6B62\u640D\uFF1B\u9023\u7E8C\u8667\u640D\u6703\u4F7F\u4E0B\u4E00\u6CE8\u52A0\u500D\u3002</p><label id="provider-label" for="provider-trigger">\u63A8\u85A6\u4F86\u6E90</label><div class="provider-picker"><select id="provider" hidden></select><button id="provider-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="provider-menu" aria-labelledby="provider-label provider-selected-name"><span id="provider-selected-logo" class="provider-logo" aria-hidden="true"></span><span id="provider-selected-name">AI\u7D9C\u5408</span><svg class="provider-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="provider-menu" role="listbox" aria-label="\u63A8\u85A6\u4F86\u6E90" hidden></div></div></section>
 <section class="form-section"><h3 class="form-section-head"><i>02</i>\u6295\u6CE8\u91D1\u984D</h3><div class="form-row"><div><label for="base">\u57FA\u672C\u55AE\u6CE8</label><input id="base" type="number" min="1" value="100"></div><div><label for="cap">\u55AE\u7B46\u4E0A\u9650</label><input id="cap" type="number" min="1" value="100000"></div></div></section>
-<section class="form-section"><h3 class="form-section-head"><i>03</i>\u6B62\u640D\u8207\u6B62\u76C8</h3><div class="form-row"><div><label for="stop-loss">\u6B62\u640D\u91D1\u984D</label><input id="stop-loss" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div><div><label for="take-profit">\u6B62\u76C8\u91D1\u984D</label><input id="take-profit" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div></div><p class="field-note">\u9054\u5230\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u9580\u6ABB\u5F8C\uFF0C\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\u3002</p></section>
+<section class="settings-added"><label for="duration-minutes">\u81EA\u52D5\u505C\u6B62\u6642\u9593\uFF08\u5206\u9418\uFF09</label><input id="duration-minutes" type="number" min="0" step="1" inputmode="numeric" value="0" placeholder="0\uFF1D\u4E0D\u9650\u6642"><p class="field-note">\u78BA\u8A8D\u958B\u59CB\u5F8C\u8A08\u6642\uFF0C\u5305\u542B\u627E\u684C\u53CA\u7B49\u5F85\u7D50\u7B97\u30020\u6216\u7559\u7A7A\u4E0D\u9650\u6642\uFF1B\u6642\u9593\u5230\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u5DF2\u63A5\u53D7\u6CE8\u55AE\u7E7C\u7E8C\u7D50\u7B97\u3002\u6BCF\u6B21\u91CD\u65B0\u958B\u59CB\u6703\u91CD\u65B0\u8A08\u6642\u3002</p></section><section class="form-section"><h3 class="form-section-head"><i>03</i>\u6B62\u640D\u8207\u6B62\u76C8</h3><div class="form-row"><div><label for="stop-loss">\u6B62\u640D\u91D1\u984D</label><input id="stop-loss" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div><div><label for="take-profit">\u6B62\u76C8\u91D1\u984D</label><input id="take-profit" type="number" min="1" placeholder="\u672A\u8A2D\u5B9A"></div></div><p class="field-note">\u9054\u5230\u672C\u8F2A\u5DF2\u7D50\u7B97\u640D\u76CA\u9580\u6ABB\u5F8C\uFF0C\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\u3002</p></section>
 <span id="zoom-label" hidden>100%</span><input id="zoom" type="range" min="70" max="180" step="10" value="100" hidden><input id="range-min" hidden value=""><input id="range-max" hidden value=""><select id="scope" hidden disabled><option value="table" selected>\u9010\u684C\u7368\u7ACB</option></select><select id="count" hidden><option value="1">1</option><option value="3">3</option><option value="5">5</option><option value="all">all</option></select><button id="scan" hidden></button><div hidden><button id="start"></button><button id="once"></button><button id="stop"></button></div></div></div>
 <div id="rooms-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u4E0B\u6CE8\u7BC4\u570D</div><h2 class="page-title">\u9078\u64C7\u684C\u53F0</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span></div><div class="selection-control"><span id="selection-mode">\u81EA\u52D5\u627E\u684C \xB7 \u958B\u653E\u4E0B\u6CE8\u5C31\u52A0\u5165</span><button id="auto-tables">\u81EA\u52D5\u627E\u684C\u4E2D</button></div><div id="rooms-hint" class="surface-note page-caption">\u5148\u53D6\u6D88\u4E00\u684C\uFF0C\u518D\u9078\u5176\u4ED6\u684C\u3002</div><div id="rooms"></div><button id="rooms-back" class="rooms-back">\u5B8C\u6210\u9078\u64C7\uFF0C\u56DE\u5230\u7E3D\u89BD</button></div><div id="logs-page" hidden><div class="surface-heading"><div><div class="surface-kicker">\u72C0\u614B\u8207\u7D50\u7B97</div><h2 class="page-title">\u57F7\u884C\u7D00\u9304</h2></div><span class="surface-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18H7zM10 8h4M10 12h4M10 16h4"/></svg></span></div><p class="surface-note">\u4F9D\u5E8F\u67E5\u770B\u9001\u51FA\u3001\u63A5\u53D7\u53CA\u7D50\u7B97\u4E8B\u4EF6\u3002</p><div class="log-status"><span class="log-label">\u76EE\u524D\u72C0\u614B</span><div id="status"></div></div><div id="events" aria-label="\u64CD\u4F5C\u4E8B\u4EF6\u6642\u9593\u8EF8"></div></div>
-<div class="compact-actions"><button id="open-report">\u6253\u958B\u6230\u7E3E</button><button id="compact-stop">\u505C\u6B62</button></div><button id="resize-panel" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section><section id="risk-dialog" class="risk-overlay" role="dialog" aria-modal="true" aria-labelledby="risk-title" hidden><div class="risk-card"><div class="risk-emblem"><svg class="risk-triangle" viewBox="0 0 80 72" aria-hidden="true"><path d="M40 5 75 65H5Z"/><path class="risk-mark" d="M40 24v20"/><circle class="risk-point" cx="40" cy="54" r="3"/></svg></div><h2 id="risk-title">\u4F7F\u7528\u98A8\u96AA\u8072\u660E</h2><p class="risk-copy">\u81EA\u884C\u6C7A\u5B9A\u958B\u555F,\u6240\u6709\u98A8\u96AA\u81EA\u884C\u627F\u64D4,\u4E0D\u4FDD\u8B49\u7A69\u5B9A\u7372\u5229,\u7A0B\u5F0F\u4E0D\u8CA0\u76F8\u95DC\u8CAC\u4EFB</p><div id="risk-stake-summary" class="risk-stake-summary" hidden></div><p id="risk-doubling-warning" class="doubling-reminder" hidden></p><label class="risk-ack"><input id="ack" type="checkbox"><span>\u6211\u5DF2\u95B1\u8B80\u4E26\u4E86\u89E3\u4E0A\u8FF0\u98A8\u96AA</span></label><div class="risk-actions"><button id="risk-cancel">\u53D6\u6D88</button><button id="risk-confirm" disabled>\u78BA\u8A8D\u958B\u59CB</button></div></div></section><section id="report-shell" class="report-shell" hidden><header class="report-head"><div><div class="surface-kicker">\u672C\u5DE5\u5177\u8A18\u9304</div><h2>\u4E0B\u6CE8\u6230\u7E3E</h2></div><button id="close-report">\u8FD4\u56DE\u7E3D\u89BD</button></header><div class="report-filter"><label>\u904A\u6232\u5927\u5EF3 <select id="report-lobby"><option value="all">\u5168\u90E8</option><option value="DG">DG</option></select></label><label>\u904A\u6232\u985E\u578B <select id="report-game"><option value="all">\u5168\u90E8</option><option value="baccarat">\u767E\u5BB6\u6A02</option></select></label><button id="report-today" class="selected">\u4ECA\u65E5</button><button id="report-yesterday">\u6628\u65E5</button><button id="report-week">\u4E03\u65E5</button></div><div class="report-tabs"><button id="report-bets" class="selected">\u6295\u6CE8\u8A18\u9304</button><button id="report-transactions" hidden>\u4EA4\u6613\u8A18\u9304</button></div><div id="report-note" class="report-note">\u672C\u5DE5\u5177\u8A18\u9304\u7684\u4E0B\u6CE8\u8207\u7D50\u679C</div>${OFFICIAL_TURNOVER_REPORT_HTML}<div class="report-scroll"><div id="report-body" class="report-cards"></div><div id="report-empty" class="report-empty" hidden>\u5C1A\u7121\u8A18\u9304</div></div><footer class="report-footer"><span id="report-total">\u5408\u8A08 \u2014</span><span><button id="report-prev">\u4E0A\u4E00\u9801</button> <span id="report-page">1 / 1</span> <button id="report-next">\u4E0B\u4E00\u9801</button></span></footer><button id="resize-report" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section>`;
+<div class="compact-actions"><button id="open-report">\u6253\u958B\u6230\u7E3E</button><button id="compact-stop">\u505C\u6B62</button></div><button id="resize-panel" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section><section id="risk-dialog" class="risk-overlay" role="dialog" aria-modal="true" aria-labelledby="risk-title" hidden><div class="risk-card"><div class="risk-emblem"><svg class="risk-triangle" viewBox="0 0 80 72" aria-hidden="true"><path d="M40 5 75 65H5Z"/><path class="risk-mark" d="M40 24v20"/><circle class="risk-point" cx="40" cy="54" r="3"/></svg></div><h2 id="risk-title">\u4F7F\u7528\u98A8\u96AA\u8072\u660E</h2><p class="risk-copy">\u81EA\u884C\u6C7A\u5B9A\u958B\u555F,\u6240\u6709\u98A8\u96AA\u81EA\u884C\u627F\u64D4,\u4E0D\u4FDD\u8B49\u7A69\u5B9A\u7372\u5229,\u7A0B\u5F0F\u4E0D\u8CA0\u76F8\u95DC\u8CAC\u4EFB</p><div id="risk-stake-summary" class="risk-stake-summary" hidden></div><p id="risk-time-summary" class="field-note"></p><p id="risk-doubling-warning" class="doubling-reminder" hidden></p><label class="risk-ack"><input id="ack" type="checkbox"><span>\u6211\u5DF2\u95B1\u8B80\u4E26\u4E86\u89E3\u4E0A\u8FF0\u98A8\u96AA</span></label><div class="risk-actions"><button id="risk-cancel">\u53D6\u6D88</button><button id="risk-confirm" disabled>\u78BA\u8A8D\u958B\u59CB</button></div></div></section><section id="report-shell" class="report-shell" hidden><header class="report-head"><div><div class="surface-kicker">\u672C\u5DE5\u5177\u8A18\u9304</div><h2>\u4E0B\u6CE8\u6230\u7E3E</h2></div><button id="close-report">\u8FD4\u56DE\u7E3D\u89BD</button></header><div class="report-filter"><label>\u904A\u6232\u5927\u5EF3 <select id="report-lobby"><option value="all">\u5168\u90E8</option><option value="DG">DG</option></select></label><label>\u904A\u6232\u985E\u578B <select id="report-game"><option value="all">\u5168\u90E8</option><option value="baccarat">\u767E\u5BB6\u6A02</option></select></label><button id="report-today" class="selected">\u4ECA\u65E5</button><button id="report-yesterday">\u6628\u65E5</button><button id="report-week">\u4E03\u65E5</button></div><div class="report-tabs"><button id="report-bets" class="selected">\u6295\u6CE8\u8A18\u9304</button><button id="report-transactions" hidden>\u4EA4\u6613\u8A18\u9304</button></div><div id="report-note" class="report-note">\u672C\u5DE5\u5177\u8A18\u9304\u7684\u4E0B\u6CE8\u8207\u7D50\u679C</div>${OFFICIAL_TURNOVER_REPORT_HTML}<div class="report-scroll"><div id="report-body" class="report-cards"></div><div id="report-empty" class="report-empty" hidden>\u5C1A\u7121\u8A18\u9304</div></div><footer class="report-footer"><span id="report-total">\u5408\u8A08 \u2014</span><span><button id="report-prev">\u4E0A\u4E00\u9801</button> <span id="report-page">1 / 1</span> <button id="report-next">\u4E0B\u4E00\u9801</button></span></footer><button id="resize-report" class="resize-grip" aria-label="\u62D6\u66F3\u8ABF\u6574\u9762\u677F\u5C3A\u5BF8" title="\u62D6\u66F3\u8ABF\u6574\u5927\u5C0F\uFF1B\u65B9\u5411\u9375\u5FAE\u8ABF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 19 19 9M14 19 19 14M19 19h.01"/></svg></button></section>`;
 
   // lib/dg-panel-data.ts
   function cumulativePoints(bets, width = 250, height = 43) {
@@ -2393,6 +2510,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     const ledger = new DgBetLedger(window.__DG_LEDGER_STATE__);
     const pokerTracker = createDgPokerTracker();
+    const sessionTimer = createDgSessionTimer();
     let running = false, busy = false, disposed = false, epoch = 0, once = false;
     let base = 100, scope = "global", provider = "combined", roomCount = "1", maxStake = 1e5, minSeconds = 6;
     let singleStaking = "martingale", userZoom = 1;
@@ -2427,12 +2545,18 @@ ${DG_MOBILE_LAYOUT_CSS}
       render();
     }
     function stop(reason = "\u5DF2\u505C\u6B62\uFF1B\u5DF2\u9001\u51FA\u7684\u4E0B\u6CE8\u4ECD\u7B49\u5F85\u5E73\u53F0\u7D50\u7B97") {
+      sessionTimer.stop();
       running = false;
       once = false;
       riskApproved = false;
       epoch++;
       q("risk-dialog").hidden = true;
       log(reason);
+    }
+    function stopIfTimeExpired() {
+      if (!running || !sessionTimer.expired()) return false;
+      stop(`\u5DF2\u9054\u8A2D\u5B9A ${sessionTimer.view().minutes} \u5206\u9418\uFF0C\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF1B\u5DF2\u63A5\u53D7\u6CE8\u55AE\u7E7C\u7E8C\u7B49\u5F85\u7D50\u7B97`);
+      return true;
     }
     function userStatus(text) {
       let value = text.replace(/\b\d{10,}\b/g, "");
@@ -2606,6 +2730,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         log(`${receipt.bet.tableId}\uFF5C${receipt.bet.gameNo}\uFF5C${receipt.accepted ? "\u5E73\u53F0\u5DF2\u63A5\u53D7\u4E0B\u6CE8" : "\u5E73\u53F0\u62D2\u7D55\u6216\u91D1\u984D\u4E0D\u7B26\uFF0C\u672A\u6A19\u793A\u6210\u529F"}\uFF5C${receipt.bet.side} ${money(receipt.bet.amount)}`);
         if (!receipt.accepted) stop("\u672C\u7B46\u4E0B\u6CE8\u672A\u78BA\u8A8D\u63A5\u53D7\uFF0C\u5DF2\u505C\u6B62\uFF1B\u4E0D\u81EA\u52D5\u91CD\u9001");
         if (once) {
+          sessionTimer.stop();
           running = false;
           once = false;
         }
@@ -2653,6 +2778,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       return ledger.pending().filter((b) => b.state !== "accepted").reduce((sum, b) => sum + b.amount, 0);
     }
     async function execute(card, token, budget) {
+      if (stopIfTimeExpired()) return;
       const decision = strategyFor(card);
       if (!decision.side) {
         waitTable(card, decision.reason || "\u7B56\u7565\u8CC7\u6599\u4E0D\u8DB3");
@@ -2688,6 +2814,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       contexts.set(bet.key, card);
       const internalSide = side === "\u838A" ? "Banker" : "Player";
       function guard() {
+        if (stopIfTimeExpired()) throw new Error("\u5DF2\u9054\u81EA\u52D5\u505C\u6B62\u6642\u9593\uFF0C\u6C92\u6709\u9001\u51FA\u65B0\u4E0B\u6CE8");
         if (window.__DG_MANUAL_CAPTURE_ACTIVE__) throw new Error("\u624B\u52D5\u6D41\u7A0B\u8A18\u9304\u4E2D\uFF0C\u5DE5\u5177\u4E0D\u9001\u55AE");
         if (!running || disposed || token !== epoch || document.hidden || String(card.gameInfo.gameNo) !== gameNo || !ready(card) || !sameSession(card)) throw new Error("\u5DF2\u505C\u6B62\u3001\u5C40\u865F\u6539\u8B8A\u6216\u505C\u6B62\u63A5\u53D7\u4E0B\u6CE8");
         const riskReason = riskStopReason(roundPnl(), riskLimits);
@@ -2744,7 +2871,9 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
     }
     async function tick() {
-      if (disposed || busy) return;
+      if (disposed) return;
+      stopIfTimeExpired();
+      if (busy) return;
       if (window.__DG_MANUAL_CAPTURE_ACTIVE__ && running) stop("\u624B\u52D5\u6D41\u7A0B\u8A18\u9304\u4E2D\uFF0C\u5DE5\u5177\u5DF2\u505C\u6B62");
       const all = nodes();
       pokerTracker.observe(boards(all));
@@ -2794,6 +2923,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = DG_PANEL_HTML;
     const cleanupFeedback = installDgButtonFeedback(shadow);
+    const cleanupTouchScroll = installDgPanelTouchScroll(shadow);
     const mountedAt = Date.now();
     const q = (id) => shadow.getElementById(id);
     q("panel").classList.toggle("compact", compact);
@@ -2913,6 +3043,13 @@ ${DG_MOBILE_LAYOUT_CSS}
         log("\u6709\u672A\u80FD\u6838\u5C0D\u7684\u4E0B\u6CE8\uFF0C\u4FDD\u6301\u505C\u6B62\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304");
         return;
       }
+      let durationMinutes;
+      try {
+        durationMinutes = parseDurationMinutes(q("duration-minutes").value);
+      } catch (e) {
+        log(e.message);
+        return;
+      }
       let nextRisk;
       try {
         nextRisk = parseRiskLimits(q("stop-loss").value, q("take-profit").value);
@@ -2980,6 +3117,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         persist();
         log(`\u65B0\u958B\u59CB\uFF1A\u57FA\u672C\u55AE\u6CE8 ${money(base)}\uFF0C\u914D\u6CE8\u5F9E\u7B2C1\u968E\u958B\u59CB\uFF1B\u4E0B\u6CE8\u7D00\u9304\u4FDD\u7559`);
       }
+      sessionTimer.start(durationMinutes);
       running = true;
       once = testOnce;
       epoch++;
@@ -3009,6 +3147,17 @@ ${DG_MOBILE_LAYOUT_CSS}
     function render() {
       if (disposed) return;
       renderOfficialTurnover(shadow, official.view());
+      const usage = sessionTimer.view();
+      q("session-elapsed").textContent = usage.elapsedText;
+      const limit = usage.started ? usage.minutes : (() => {
+        try {
+          return parseDurationMinutes(q("duration-minutes").value);
+        } catch {
+          return null;
+        }
+      })();
+      q("session-remaining").textContent = usage.started && usage.remainingMs !== null ? `\u5269\u9918 ${formatDuration(usage.remainingMs)}` : limit === null ? "\u6642\u9650\u683C\u5F0F\u932F\u8AA4" : limit ? `\u8A2D\u5B9A ${limit} \u5206\u9418` : "\u4E0D\u9650\u6642";
+      q("duration-minutes").disabled = running || busy;
       q("status").textContent = `${running ? "\u57F7\u884C\u4E2D" : "\u5DF2\u505C\u6B62"}\uFF5C${userStatus(status)}`;
       q("hero-status").textContent = userStatus(status);
       const eventSignature = logs.join("\n");
@@ -3213,6 +3362,14 @@ ${DG_MOBILE_LAYOUT_CSS}
       riskReturnFocus = shadow.activeElement;
       q("risk-doubling-warning").hidden = stakingMode() !== "doubling";
       q("risk-doubling-warning").textContent = `\u4F7F\u7528\u500D\u6295\u6CD5\uFF0C\u8ACB\u8A2D\u5B9A\u6B62\u76C8\u8207\u6B62\u640D\u3002${!q("take-profit").value || !q("stop-loss").value ? "\u76EE\u524D\u6B62\u76C8\uFF0F\u6B62\u640D\u5C1A\u672A\u5168\u90E8\u8A2D\u5B9A\uFF0C\u8ACB\u5148\u81F3\u8A2D\u5B9A\u9801\u78BA\u8A8D\u3002" : "\u8ACB\u78BA\u8A8D\u76EE\u524D\u6B62\u76C8\u8207\u6B62\u640D\u91D1\u984D\u7B26\u5408\u4F60\u7684\u8A2D\u5B9A\u3002"}`;
+      q("risk-time-summary").textContent = (() => {
+        try {
+          const n = parseDurationMinutes(q("duration-minutes").value);
+          return n ? `\u81EA\u52D5\u505C\u6B62\uFF1A${n} \u5206\u9418\uFF0C\u78BA\u8A8D\u958B\u59CB\u5F8C\u8A08\u6642` : "\u81EA\u52D5\u505C\u6B62\uFF1A\u4E0D\u9650\u6642\uFF1B\u78BA\u8A8D\u958B\u59CB\u5F8C\u986F\u793A\u672C\u6B21\u4F7F\u7528\u6642\u9593";
+        } catch (e) {
+          return e.message;
+        }
+      })();
       q("risk-stake-summary").textContent = `${startMode === "fresh" ? "\u65B0\u958B\u59CB\uFF1A\u9996\u7B46\u57FA\u672C\u984D" : "\u7E8C\u63A5\uFF1A\u6CBF\u7528\u914D\u6CE8\u968E\u7D1A"} \xB7 \u57FA\u672C ${q("base").value} \xB7 ${stakingMode() === "flat" ? "\u5E73\u6CE8" : stakingMode() === "doubling" ? "\u500D\u6295 1\u21922\u21924\u21928" : `\u99AC\u4E01 1\u21923\u21927\u219215`}`;
       q("ack").checked = false;
       q("risk-confirm").disabled = true;
@@ -3297,6 +3454,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       q("zoom").value = String(Math.round(userZoom * 100));
       fitPanel();
     }
+    q("duration-minutes").oninput = render;
     q("zoom").oninput = () => setZoom(Number(q("zoom").value) / 100);
     function setMini(value) {
       if (value === mini) return;
@@ -3490,7 +3648,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       mobileDiagnostics: () => inspectDgMobileNativeSurface(window),
       runtimeDiagnostics: () => describeDgScene(nodes()),
       exportMobilePublicSources: () => exportDgMobileLoadedPublicScripts(document),
-      status: () => ({ running, status, mini, base, startMode, selectionMode: manualSelection ? "manual" : "auto", panelSize: { width: panelWidth, height: panelHeight }, pending: ledger.pending().map((b) => ({ ...b })), selected: [...selected], roomCount, scope, staking: stakingMode(), riskLimits: { ...riskLimits }, roundPnl: roundPnl(), unacknowledgedFunds: unacknowledgedFunds() }),
+      status: () => ({ running, status, usage: sessionTimer.view(), mini, base, startMode, selectionMode: manualSelection ? "manual" : "auto", panelSize: { width: panelWidth, height: panelHeight }, pending: ledger.pending().map((b) => ({ ...b })), selected: [...selected], roomCount, scope, staking: stakingMode(), riskLimits: { ...riskLimits }, roundPnl: roundPnl(), unacknowledgedFunds: unacknowledgedFunds() }),
       rounds: () => boards().filter((c) => selected.has(String(c.tableId))).map((c) => ({ table: c.gameInfo.tableName, round: c.gameInfo.playId, ...currentRoundState(c) })),
       diagnostics: () => boards().map((c) => ({ table: c.gameInfo?.tableName || String(c.tableId), tableId: String(c.tableId), selected: selected.has(String(c.tableId)), round: c.gameInfo?.playId, gameState: c.gameInfo?.stateId, countdown: Math.floor(remaining(c)), ready: ready(c), ...checkDgAmount(c, stakeAmount(String(c.tableId))) })),
       exportLedger: () => JSON.parse(JSON.stringify(ledger.state)),
@@ -3499,12 +3657,14 @@ ${DG_MOBILE_LAYOUT_CSS}
         return c ? provider === "counting" || provider === "parity" ? strategyFor(c).reason || "\u7B49\u5F85\u5BE6\u969B\u724C\u5F35" : providerAnalysisText(provider, { results: roads(c) }) : "\u672A\u627E\u5230\u684C\u53F0";
       },
       dispose: () => {
+        sessionTimer.stop();
         running = false;
         disposed = true;
         epoch++;
         clearInterval(timer);
         official.dispose();
         cleanupFeedback();
+        cleanupTouchScroll();
         cleanupResize();
         providerMenu.cleanup();
         socket?.off("RECEIVED_SUCCESS", owner, onMessage);
