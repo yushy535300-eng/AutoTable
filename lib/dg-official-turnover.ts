@@ -27,8 +27,8 @@ export type DgOfficialTurnover = {
   dispose(): void;
 };
 
-export const DG_OFFICIAL_REFRESH_MS = 60_000;
-export const DG_OFFICIAL_TIMEOUT_MS = 10_000;
+export const DG_OFFICIAL_REFRESH_MS = 30_000;
+export const DG_OFFICIAL_TIMEOUT_MS = 30_000;
 
 type Period = "today" | "week";
 type AnyRecord = Record<string, unknown>;
@@ -47,12 +47,14 @@ type OwnRequest = {
   sentAt: number;
   expired: boolean;
   cancelled: boolean;
+  transportEpoch: number;
 };
 type RequestBinding = {
   own: OwnRequest | null;
   type: number | null;
   span: string | null;
   unfilteredFirstPage: boolean;
+  transportEpoch: number;
 };
 
 type Runtime = { playerInfo: PlayerInfo; socket: SocketLike };
@@ -152,7 +154,7 @@ function findRuntime(W: unknown): Runtime | null {
   return null;
 }
 
-function readRequestBinding(bean: unknown, ownRequests: WeakMap<object, OwnRequest>): RequestBinding | null {
+function readRequestBinding(bean: unknown, ownRequests: WeakMap<object, OwnRequest>, transportEpoch: number): RequestBinding | null {
   if (!isObject(bean) || Number(bean.cmd) !== 13) return null;
   const list = Array.isArray(bean.list) ? bean.list : [];
   const type = Number.isFinite(Number(bean.type)) ? Number(bean.type) : null;
@@ -161,7 +163,7 @@ function readRequestBinding(bean: unknown, ownRequests: WeakMap<object, OwnReque
     list.length === 4 && list[0] === "" && list[1] === "" &&
     String(list[2]) === "12" && String(list[3]) === "1" &&
     zeroOrMissing(bean.lobbyId) && zeroOrMissing(bean.tableId);
-  return { own: ownRequests.get(bean as object) ?? null, type, span, unfilteredFirstPage };
+  return { own: ownRequests.get(bean as object) ?? null, type, span, unfilteredFirstPage, transportEpoch };
 }
 
 function parseReportObject(raw: unknown): AnyRecord | null {
@@ -225,10 +227,17 @@ export function createDgOfficialTurnover(
   let listenerAttached = false;
   let listenerMode: "laya" | "emitter" | null = null;
   const listenerOwner = {};
+  let socketListener: ((bean: unknown) => void) | null = null;
+  let transportEpoch = 0;
+  let nativeTransport: SocketLike["socket"] = undefined;
+  let closedObserved = false;
+  let connectionListeners: Array<{ event: string; listener: () => void }> = [];
   const bindings: RequestBinding[] = [];
   let pending: OwnRequest | null = null;
   let remaining: Period[] = [];
   let timeout: ReturnType<typeof setTimeout> | null = null;
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let refreshQueued = false;
   let lastCycleAt = 0;
   let reconciliationRequired = false;
 
@@ -251,6 +260,21 @@ export function createDgOfficialTurnover(
     timeout = null;
   }
 
+  function scheduleRefresh(): void {
+    if (disposed || refreshTimer !== null) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      refresh(false);
+    }, 250);
+  }
+
+  function reconcileDrainedBindings(): void {
+    if (pending || bindings.length) return;
+    reconciliationRequired = false;
+    lastCycleAt = 0;
+    scheduleRefresh();
+  }
+
   function markCurrentCancelled(): void {
     if (!pending) return;
     pending.cancelled = true;
@@ -261,8 +285,31 @@ export function createDgOfficialTurnover(
   function resetValues(status = EMPTY_STATUS): void {
     markCurrentCancelled();
     remaining = [];
+    refreshQueued = false;
     today = emptyValue("today", currentDay, status);
     week = emptyValue("week", currentDay, status);
+  }
+
+  function resetTransport(status: string): void {
+    // Reader-local epoch, never added to a vendor packet. Called only after an
+    // observed close or a distinct native transport; old replies stay invalid.
+    transportEpoch++;
+    resetValues(status);
+    bindings.length = 0;
+    reconciliationRequired = false;
+    lastCycleAt = 0;
+  }
+
+  function refreshTransport(runtime: Runtime): boolean {
+    if (socket && (socket !== runtime.socket || nativeTransport !== runtime.socket.socket)) {
+      const distinctNative = !!nativeTransport && !!runtime.socket.socket && nativeTransport !== runtime.socket.socket;
+      const distinctEmitter = socket !== runtime.socket && !nativeTransport && !runtime.socket.socket;
+      if (distinctNative || distinctEmitter) resetTransport("DG官方連線已更新，重新同步中");
+      // An alias of the same native socket must retain old request bindings.
+      detachSocket();
+      closedObserved = false;
+    }
+    return attach(runtime);
   }
 
   function ensureFreshIdentity(): void {
@@ -279,15 +326,24 @@ export function createDgOfficialTurnover(
 
   function detachSocket(): void {
     if (!socket) return;
-    if (listenerAttached && typeof socket.off === "function") {
+    if (listenerAttached && socketListener && typeof socket.off === "function") {
       try {
-        if (listenerMode === "emitter") socket.off(EVENT_RECEIVED_SUCCESS, receivedHandler);
-        else socket.off(EVENT_RECEIVED_SUCCESS, listenerOwner, receivedHandler);
+        if (listenerMode === "emitter") socket.off(EVENT_RECEIVED_SUCCESS, socketListener);
+        else socket.off(EVENT_RECEIVED_SUCCESS, listenerOwner, socketListener);
       } catch { /* a scene may already have destroyed its dispatcher */ }
+      for (const entry of connectionListeners) {
+        try {
+          if (listenerMode === "emitter") socket.off(entry.event, entry.listener);
+          else socket.off(entry.event, listenerOwner, entry.listener);
+        } catch { /* dispatcher may already have been destroyed */ }
+      }
     }
     if (sendObserver && socket.sendData === sendObserver && originalSend) socket.sendData = originalSend;
     listenerAttached = false;
     listenerMode = null;
+    socketListener = null;
+    connectionListeners = [];
+    nativeTransport = undefined;
     originalSend = null;
     sendObserver = null;
     socket = null;
@@ -300,36 +356,72 @@ export function createDgOfficialTurnover(
     socket = runtime.socket;
     const previousSend = runtime.socket.sendData;
     originalSend = previousSend;
+    const observerEpoch = transportEpoch;
     sendObserver = function observedSend(this: unknown, bean: unknown): unknown {
-      if (!disposed && socket === runtime.socket) observeOutgoing(bean);
+      if (!disposed && !closedObserved && socket === runtime.socket && observerEpoch === transportEpoch) observeOutgoing(bean);
       // Keep this local reference: another observer may wrap us and continue to
       // call this function after our dispose() has cleared module state.
       return previousSend.call(this, bean);
     };
     runtime.socket.sendData = sendObserver;
+    const activeSocket = runtime.socket;
+    const listenerEpoch = transportEpoch;
+    nativeTransport = runtime.socket.socket;
+    socketListener = (bean: unknown) => {
+      if (!disposed && !closedObserved && socket === activeSocket && listenerEpoch === transportEpoch) receivedHandler(bean);
+    };
     try {
       // Native DG SocketMan is a Laya EventDispatcher: on(type, caller, listener).
-      runtime.socket.on(EVENT_RECEIVED_SUCCESS, listenerOwner, receivedHandler);
+      runtime.socket.on(EVENT_RECEIVED_SUCCESS, listenerOwner, socketListener);
       listenerMode = "laya";
       listenerAttached = true;
     } catch {
       try {
-        runtime.socket.on(EVENT_RECEIVED_SUCCESS, receivedHandler);
+        runtime.socket.on(EVENT_RECEIVED_SUCCESS, socketListener);
         listenerMode = "emitter";
         listenerAttached = true;
       } catch {
         if (runtime.socket.sendData === sendObserver) runtime.socket.sendData = originalSend;
         socket = null;
+        socketListener = null;
         originalSend = null;
         sendObserver = null;
         return false;
       }
     }
+    const connectionEnded = () => {
+      if (disposed || socket !== activeSocket || closedObserved || listenerEpoch !== transportEpoch) return;
+      closedObserved = true;
+      resetTransport("DG官方連線中斷，等待新連線同步");
+    };
+    const connectionFailed = () => {
+      // CONNECT_FAILED alone can be a transient error on a still-live socket.
+      if (activeSocket.socket?.connected === false) connectionEnded();
+    };
+    const connectionOpened = () => {
+      if (disposed || socket !== activeSocket || !closedObserved || activeSocket.socket?.connected === false) return;
+      closedObserved = false;
+      detachSocket();
+      if (attach(runtime)) scheduleRefresh();
+    };
+    // These SocketMan events were verified in the official Mobile V3.2.9
+    // source. No CONNECT_SUCCESS without a prior close is treated as a reset.
+    for (const entry of [
+      { event: "CONNECT_CLOSED", listener: connectionEnded },
+      { event: "CONNECT_FAILED", listener: connectionFailed },
+      { event: "CONNECT_SUCCESS", listener: connectionOpened },
+    ]) {
+      try {
+        if (listenerMode === "emitter") activeSocket.on!(entry.event, entry.listener);
+        else activeSocket.on!(entry.event, listenerOwner, entry.listener);
+        connectionListeners.push(entry);
+      } catch { /* older/minimal hosts still use conservative timeout recovery */ }
+    }
     return true;
   }
 
   function observeOutgoing(bean: unknown): void {
-    const binding = readRequestBinding(bean, ownRequests);
+    const binding = readRequestBinding(bean, ownRequests, transportEpoch);
     if (!binding) return;
     bindings.push(binding);
     if (!binding.own && pending) {
@@ -371,11 +463,17 @@ export function createDgOfficialTurnover(
       if (pending) failClosed("官方報表回覆無法對應，待手動同步");
       return;
     }
-    if (!binding.own) return; // Native/manual report; it is not our statistic.
+    if (binding.transportEpoch !== transportEpoch) return;
+    if (!binding.own) {
+      // Do not display a manual report, but retire its known binding so a
+      // previously overlapped cycle can recover once the whole queue drains.
+      if (reconciliationRequired) reconcileDrainedBindings();
+      return;
+    }
     const request = binding.own;
-    if (request.expired || request.cancelled || pending?.id !== request.id) {
+    if (request.transportEpoch !== transportEpoch || request.expired || request.cancelled || pending?.id !== request.id) {
       // This is a known late/cancelled reply. It proves its own binding but is never displayed.
-      if (!pending) reconciliationRequired = false;
+      reconcileDrainedBindings();
       return;
     }
     if (!responseLooksLikeUnfilteredBetReport(bean, binding)) {
@@ -390,7 +488,7 @@ export function createDgOfficialTurnover(
     ensureFreshIdentity();
     if (disposed) return;
     const runtime = findRuntime(W);
-    if (!runtime || !attach(runtime)) {
+    if (!runtime || !refreshTransport(runtime)) {
       update(period, { value: null, status: "待DG官方報表就緒", updatedAt: null });
       remaining = [];
       lastCycleAt = 0;
@@ -417,7 +515,7 @@ export function createDgOfficialTurnover(
     }
     const request: OwnRequest = {
       id: ++requestId, period, account: currentAccount, taipeiDay: currentDay,
-      sentAt: Date.now(), expired: false, cancelled: false,
+      sentAt: Date.now(), expired: false, cancelled: false, transportEpoch,
     };
     const bean = { cmd: 13, type: 1, token: runtime.playerInfo.token, object: period === "today" ? "1" : "7", list: ["", "", "12", "1"] };
     ownRequests.set(bean, request);
@@ -438,26 +536,34 @@ export function createDgOfficialTurnover(
     timeout = setTimeout(() => {
       if (disposed || pending?.id !== request.id) return;
       request.expired = true;
-      failClosed("DG官方報表逾時，待手動同步");
+      failClosed("DG官方報表逾時，等待前次回覆後自動重試；可核對結算後重連");
     }, DG_OFFICIAL_TIMEOUT_MS);
   }
 
   function sendNext(): void {
     if (disposed || pending || reconciliationRequired) return;
+    if (!canRefresh()) return;
     const period = remaining.shift();
     if (period) requestPeriod(period);
+    else if (refreshQueued) scheduleRefresh();
   }
 
   function refresh(force = false): void {
     if (disposed) return;
     ensureFreshIdentity();
+    if (force) refreshQueued = true;
+    const runtime = findRuntime(W);
+    if (runtime) refreshTransport(runtime);
     // A wager's short critical section is not loss of the official data source.
     if (!canRefresh()) return;
+    if (closedObserved) return;
     if (pending) return;
     // Do not issue a second report when an old response could still be in flight.
     if (reconciliationRequired || bindings.length) return;
+    if (remaining.length) { sendNext(); return; }
     const now = Date.now();
-    if (!force && now - lastCycleAt < DG_OFFICIAL_REFRESH_MS) return;
+    if (!refreshQueued && now - lastCycleAt < DG_OFFICIAL_REFRESH_MS) return;
+    refreshQueued = false;
     lastCycleAt = now;
     remaining = ["today", "week"];
     sendNext();
@@ -465,13 +571,21 @@ export function createDgOfficialTurnover(
 
   function view(): DgOfficialTurnoverView {
     ensureFreshIdentity();
-    return { platform: "DG", today: { ...today }, week: { ...week } };
+    const result = { platform: "DG" as const, today: { ...today }, week: { ...week } };
+    if (pending && !pending.cancelled) {
+      const elapsed = Math.max(0, Date.now() - pending.sentAt);
+      if (elapsed >= 10_000) result[pending.period].status = `DG官方報表回應較慢，已等待${Math.floor(elapsed / 1000)}秒`;
+    }
+    return result;
   }
 
   function dispose(): void {
     if (disposed) return;
     disposed = true;
     clearInterval(interval);
+    if (refreshTimer !== null) clearTimeout(refreshTimer);
+    refreshTimer = null;
+    refreshQueued = false;
     clearTimeoutForPending();
     markCurrentCancelled();
     remaining = [];

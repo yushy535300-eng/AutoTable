@@ -21,6 +21,23 @@ class FakeSocket {
   reply(bean: Bean) { this.listener?.(bean); }
 }
 
+class LifecycleSocket extends FakeSocket {
+  socket = { connected: true };
+  handlers = new Map<string, Set<(bean: Bean) => void>>();
+  override on(event: string, owner: unknown, listener: (bean: Bean) => void) {
+    super.on(event, owner, listener);
+    const listeners = this.handlers.get(event) ?? new Set();
+    listeners.add(listener); this.handlers.set(event, listeners);
+  }
+  override off(event: string, owner: unknown, listener: (bean: Bean) => void) {
+    super.off(event, owner, listener);
+    this.handlers.get(event)?.delete(listener);
+  }
+  emit(event: string) {
+    for (const listener of [...(this.handlers.get(event) ?? [])]) listener({});
+  }
+}
+
 function reply(valid: unknown, patch: Bean = {}): Bean {
   return {
     cmd: 13, codeId: 0, type: 1, lobbyId: 0, tableId: 0,
@@ -162,6 +179,157 @@ describe("DG official turnover", () => {
     expect(reader.view().today.value).toBeNull();
     reader.refresh(true);
     expect(socket.sent).toHaveLength(2);
+    reader.dispose();
+  });
+
+  it("accepts an attributable slower official reply instead of timing out at ten seconds", () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a");
+    reader.refresh(true);
+    vi.advanceTimersByTime(12_000);
+    expect(socket.sent).toHaveLength(1);
+    expect(reader.view().today.status).toContain("已等待12秒");
+    socket.reply(reply(1234));
+    expect(socket.sent).toHaveLength(2);
+    socket.reply(reply(5678));
+    expect(reader.view().today.value).toBe(1234);
+    expect(reader.view().week.value).toBe(5678);
+    reader.dispose();
+  });
+
+  it("starts one fresh cycle immediately after the known timeout reply retires, without displaying its late value", () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a");
+    reader.refresh(true);
+    vi.advanceTimersByTime(DG_OFFICIAL_TIMEOUT_MS);
+    for (let i = 0; i < 5; i++) reader.refresh(true);
+    expect(socket.sent).toHaveLength(1);
+    socket.reply(reply(999));
+    expect(reader.view().today.value).toBeNull();
+    vi.advanceTimersByTime(250);
+    expect(socket.sent).toHaveLength(2);
+    socket.reply(reply(25));
+    socket.reply(reply(35));
+    expect(reader.view().today.value).toBe(25);
+    expect(reader.view().week.value).toBe(35);
+    reader.dispose();
+  });
+
+  it("coalesces refreshes received during an in-flight cycle rather than ignoring them or flooding requests", () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a");
+    reader.refresh(true);
+    for (let i = 0; i < 20; i++) reader.refresh(true);
+    expect(socket.sent).toHaveLength(1);
+    socket.reply(reply(1));
+    socket.reply(reply(2));
+    vi.advanceTimersByTime(250);
+    expect(socket.sent).toHaveLength(3);
+    socket.reply(reply(3));
+    socket.reply(reply(4));
+    vi.advanceTimersByTime(1000);
+    expect(socket.sent).toHaveLength(4);
+    expect(reader.view().today.value).toBe(3);
+    expect(reader.view().week.value).toBe(4);
+    reader.dispose();
+  });
+
+  it("waits through the wager critical section then sends the queued remaining period promptly", () => {
+    vi.useFakeTimers();
+    const socket = new FakeSocket();
+    let canRefresh = true;
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a", () => canRefresh);
+    reader.refresh(true);
+    canRefresh = false;
+    socket.reply(reply(10));
+    expect(socket.sent).toHaveLength(1);
+    canRefresh = true;
+    vi.advanceTimersByTime(1000);
+    expect(socket.sent).toHaveLength(2);
+    socket.reply(reply(20));
+    expect(reader.view().today.value).toBe(10);
+    expect(reader.view().week.value).toBe(20);
+    reader.dispose();
+  });
+
+  it("recovers after a verified close and open on the same manager, without old listeners or outer wrappers duplicating bindings", () => {
+    vi.useFakeTimers();
+    const socket = new LifecycleSocket();
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a");
+    reader.refresh(true);
+    const oldListener = [...socket.handlers.get("RECEIVED_SUCCESS")!][0];
+    const innerObserver = socket.sendData;
+    socket.sendData = (bean: Bean) => innerObserver(bean);
+    vi.advanceTimersByTime(DG_OFFICIAL_TIMEOUT_MS);
+    socket.socket.connected = false; socket.emit("CONNECT_CLOSED");
+    reader.refresh(true);
+    expect(socket.sent).toHaveLength(1);
+    socket.socket.connected = true; socket.emit("CONNECT_SUCCESS");
+    vi.advanceTimersByTime(250);
+    expect(socket.sent).toHaveLength(2);
+    oldListener(reply(999));
+    expect(reader.view().today.value).toBeNull();
+    socket.reply(reply(17)); socket.reply(reply(29));
+    expect(reader.view().today.value).toBe(17);
+    expect(reader.view().week.value).toBe(29);
+    expect(socket.sent).toHaveLength(3);
+    expect(socket.sent.every(bean => !("transportEpoch" in bean))).toBe(true);
+    reader.dispose();
+    expect([...socket.handlers.values()].every(set => set.size === 0)).toBe(true);
+  });
+
+  it("detects a distinct native socket before the old timeout gate and ignores queued old callbacks", () => {
+    vi.useFakeTimers();
+    const socket = new LifecycleSocket();
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a");
+    reader.refresh(true);
+    const oldListener = [...socket.handlers.get("RECEIVED_SUCCESS")!][0];
+    vi.advanceTimersByTime(DG_OFFICIAL_TIMEOUT_MS);
+    socket.socket = { connected: true };
+    vi.advanceTimersByTime(1000);
+    expect(socket.sent).toHaveLength(2);
+    oldListener(reply(999));
+    socket.reply(reply(18)); socket.reply(reply(30));
+    expect(reader.view().today.value).toBe(18);
+    expect(reader.view().week.value).toBe(30);
+    reader.dispose();
+  });
+
+  it("does not reset an active request merely for duplicate open events or transient errors on a live transport", () => {
+    const socket = new LifecycleSocket();
+    const reader = createDgOfficialTurnover(host(socket), () => "account-a");
+    reader.refresh(true);
+    socket.emit("CONNECT_SUCCESS"); socket.emit("CONNECT_FAILED");
+    reader.refresh(true);
+    expect(socket.sent).toHaveLength(1);
+    socket.reply(reply(15)); socket.reply(reply(25));
+    expect(reader.view().today.value).toBe(15);
+    expect(reader.view().week.value).toBe(25);
+    reader.dispose();
+  });
+
+  it("keeps the attribution lock if a different manager aliases the same native socket", () => {
+    vi.useFakeTimers();
+    const original = new LifecycleSocket(), alias = new LifecycleSocket();
+    alias.socket = original.socket;
+    let current = original;
+    const W = { Laya: { stage: { numChildren: 1, getChildAt: () => ({ playerInfo: { token: "anonymous", socketMan: current } }) } } };
+    const reader = createDgOfficialTurnover(W, () => "account-a");
+    reader.refresh(true);
+    vi.advanceTimersByTime(DG_OFFICIAL_TIMEOUT_MS);
+    current = alias;
+    reader.refresh(true);
+    expect(original.sent).toHaveLength(1);
+    expect(alias.sent).toHaveLength(0);
+    alias.reply(reply(999));
+    vi.advanceTimersByTime(250);
+    expect(alias.sent).toHaveLength(1);
+    alias.reply(reply(14)); alias.reply(reply(24));
+    expect(reader.view().today.value).toBe(14);
+    expect(reader.view().week.value).toBe(24);
     reader.dispose();
   });
 

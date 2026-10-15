@@ -35,14 +35,14 @@ export function AutoBacAccess(props: AccessProps) {
             <View style={s.brandCopy}>
               {desktop ? <Text style={s.kicker}>REAL-TIME CONTROL ROOM</Text> : null}
               <Text testID="autobac-access-title" numberOfLines={1} style={[s.title, !desktop && s.titleMobile, narrow && s.titleNarrow]}>百家樂自動下注</Text>
-              <Text style={[s.subtitle, !desktop && s.subtitleMobile]}>安全登入後選擇 MT／DG</Text>
+              <Text style={[s.subtitle, !desktop && s.subtitleMobile]}>安全登入後進入 DG</Text>
             </View>
           </View>
           <View style={s.heroDivider} />
           <View style={[s.threadsCard, !desktop && s.threadsCardMobile]}>
             <View style={s.threadsHead}><View style={s.threadsLogo}><FontAwesome6 name="threads" size={24} color="#e8e9df" /></View><Text style={s.threadsLabel}>THREADS</Text></View>
             <Text style={s.threadsName}>{brand.creatorName}</Text><Text style={s.threadsAccount}>{brand.threadsHandle}</Text>
-            <Pressable testID="access-threads" accessibilityRole="link" accessibilityLabel="Threads MT工程師 @uss0857" onPress={() => openBrandLink('threads')} style={({ pressed }) => [s.follow, pressed && s.pressed]}><MaterialIcons name="add" size={16} color="#e4e4cd" /><Text style={s.followText}>FOLLOW</Text></Pressable>
+            <Pressable testID="access-threads" accessibilityRole="link" accessibilityLabel={`Threads 作者 ${brand.threadsHandle}`} onPress={() => openBrandLink('threads')} style={({ pressed }) => [s.follow, pressed && s.pressed]}><MaterialIcons name="add" size={16} color="#e4e4cd" /><Text style={s.followText}>FOLLOW</Text></Pressable>
           </View>
         </View>
         <View style={s.divider} />

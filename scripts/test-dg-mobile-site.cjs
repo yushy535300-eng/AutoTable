@@ -248,6 +248,8 @@ function assertDgliMobileBody(raw) {
     await page.getByText("安全登入", { exact: true }).click();
     await page.getByTestId("choose-dg").waitFor({ timeout: 30000 });
     assert.equal(requests.includes("dgli-login"), false, "no DGLI authorization before the DG choice");
+    assert.equal(await page.getByTestId('choose-mt').count(), 0, 'MT entry is removed in DG-only release');
+    assert.equal(await page.getByText('選擇 DG 或 MT', {exact: false}).count(), 0, 'No dual-platform instruction');
 
     await page.getByTestId("choose-dg").click();
     await page.waitForSelector('iframe[title="DG 真人遊戲"]', { timeout: 30000 });
@@ -334,6 +336,8 @@ function assertDgliMobileBody(raw) {
     const stream = await download.createReadStream();
     let diagnostic = "";
     for await (const chunk of stream) diagnostic += chunk;
+    const expectedBuild = JSON.parse(fs.readFileSync(path.join(ROOT, "public/autobac-version.json"), "utf8"));
+    assert.equal(JSON.parse(diagnostic).version, expectedBuild.version, "downloaded diagnostic uses the same version as the public build metadata");
     assert.match(diagnostic, /"platform":\s*"DG"/, "diagnostic identifies DG without exporting credentials");
     assert.match(diagnostic, /ddnewwap\/V3\.2\.9\/js\/bundle\.js/, "diagnostic includes only the public mobile bundle path");
     for (const forbidden of [NATIVE_TOKEN, NATIVE_SECRET, "offline-mobile"]) assert.equal(diagnostic.includes(forbidden), false, `diagnostic must not export ${forbidden}`);
@@ -344,6 +348,7 @@ function assertDgliMobileBody(raw) {
     fs.mkdirSync(path.dirname(SCREENSHOT), { recursive: true });
     await page.screenshot({ path: SCREENSHOT, fullPage: true });
     assert.equal(continuedExternal.length, 0, "no external request may be continued");
+    assert.equal(externalRoutes.some(route => /\/MTLI\/|ofalive99|\/api\/mt\//i.test(route)), false, 'No MT authorization or vendor requests');
     assert.deepEqual(errors, [], "offline Android flow has no browser runtime errors");
     console.log("PASS offline-only Android 440x894 mobile site: original access/DGLI Mobile authorization, same-origin V3.2.9 WAP foreground, single Mulit click, 8 complete source-gated native cards, stopped panel, wallet/8 strategies, credential-free diagnostics, and zero cmd 6 sends.");
   } catch (error) {

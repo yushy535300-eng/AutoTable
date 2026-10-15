@@ -1793,8 +1793,8 @@ ${DG_MOBILE_LAYOUT_CSS}
   }
 
   // lib/dg-official-turnover.ts
-  var DG_OFFICIAL_REFRESH_MS = 6e4;
-  var DG_OFFICIAL_TIMEOUT_MS = 1e4;
+  var DG_OFFICIAL_REFRESH_MS = 3e4;
+  var DG_OFFICIAL_TIMEOUT_MS = 3e4;
   var EMPTY_STATUS = "\u5F85\u540C\u6B65\u5B98\u65B9\u5831\u8868";
   var SCOPE = "DG \u5B98\u65B9\u6709\u6548\u984D\uFF08dList[1]\uFF09";
   var EVENT_RECEIVED_SUCCESS = "RECEIVED_SUCCESS";
@@ -1878,13 +1878,13 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     return null;
   }
-  function readRequestBinding(bean, ownRequests) {
+  function readRequestBinding(bean, ownRequests, transportEpoch) {
     if (!isObject(bean) || Number(bean.cmd) !== 13) return null;
     const list = Array.isArray(bean.list) ? bean.list : [];
     const type = Number.isFinite(Number(bean.type)) ? Number(bean.type) : null;
     const span = typeof bean.object === "string" || typeof bean.object === "number" ? String(bean.object) : null;
     const unfilteredFirstPage = type === 1 && (span === "1" || span === "7") && list.length === 4 && list[0] === "" && list[1] === "" && String(list[2]) === "12" && String(list[3]) === "1" && zeroOrMissing(bean.lobbyId) && zeroOrMissing(bean.tableId);
-    return { own: ownRequests.get(bean) ?? null, type, span, unfilteredFirstPage };
+    return { own: ownRequests.get(bean) ?? null, type, span, unfilteredFirstPage, transportEpoch };
   }
   function parseReportObject(raw) {
     if (typeof raw === "string") {
@@ -1940,10 +1940,17 @@ ${DG_MOBILE_LAYOUT_CSS}
     let listenerAttached = false;
     let listenerMode = null;
     const listenerOwner = {};
+    let socketListener = null;
+    let transportEpoch = 0;
+    let nativeTransport = void 0;
+    let closedObserved = false;
+    let connectionListeners = [];
     const bindings = [];
     let pending = null;
     let remaining = [];
     let timeout = null;
+    let refreshTimer = null;
+    let refreshQueued = false;
     let lastCycleAt = 0;
     let reconciliationRequired = false;
     const interval = setInterval(() => refresh(false), 1e3);
@@ -1966,6 +1973,19 @@ ${DG_MOBILE_LAYOUT_CSS}
       if (timeout !== null) clearTimeout(timeout);
       timeout = null;
     }
+    function scheduleRefresh() {
+      if (disposed || refreshTimer !== null) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refresh(false);
+      }, 250);
+    }
+    function reconcileDrainedBindings() {
+      if (pending || bindings.length) return;
+      reconciliationRequired = false;
+      lastCycleAt = 0;
+      scheduleRefresh();
+    }
     function markCurrentCancelled() {
       if (!pending) return;
       pending.cancelled = true;
@@ -1975,8 +1995,26 @@ ${DG_MOBILE_LAYOUT_CSS}
     function resetValues(status = EMPTY_STATUS) {
       markCurrentCancelled();
       remaining = [];
+      refreshQueued = false;
       today = emptyValue("today", currentDay, status);
       week = emptyValue("week", currentDay, status);
+    }
+    function resetTransport(status) {
+      transportEpoch++;
+      resetValues(status);
+      bindings.length = 0;
+      reconciliationRequired = false;
+      lastCycleAt = 0;
+    }
+    function refreshTransport(runtime) {
+      if (socket && (socket !== runtime.socket || nativeTransport !== runtime.socket.socket)) {
+        const distinctNative = !!nativeTransport && !!runtime.socket.socket && nativeTransport !== runtime.socket.socket;
+        const distinctEmitter = socket !== runtime.socket && !nativeTransport && !runtime.socket.socket;
+        if (distinctNative || distinctEmitter) resetTransport("DG\u5B98\u65B9\u9023\u7DDA\u5DF2\u66F4\u65B0\uFF0C\u91CD\u65B0\u540C\u6B65\u4E2D");
+        detachSocket();
+        closedObserved = false;
+      }
+      return attach(runtime);
     }
     function ensureFreshIdentity() {
       const day = taipeiDay();
@@ -1989,16 +2027,26 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     function detachSocket() {
       if (!socket) return;
-      if (listenerAttached && typeof socket.off === "function") {
+      if (listenerAttached && socketListener && typeof socket.off === "function") {
         try {
-          if (listenerMode === "emitter") socket.off(EVENT_RECEIVED_SUCCESS, receivedHandler);
-          else socket.off(EVENT_RECEIVED_SUCCESS, listenerOwner, receivedHandler);
+          if (listenerMode === "emitter") socket.off(EVENT_RECEIVED_SUCCESS, socketListener);
+          else socket.off(EVENT_RECEIVED_SUCCESS, listenerOwner, socketListener);
         } catch {
+        }
+        for (const entry of connectionListeners) {
+          try {
+            if (listenerMode === "emitter") socket.off(entry.event, entry.listener);
+            else socket.off(entry.event, listenerOwner, entry.listener);
+          } catch {
+          }
         }
       }
       if (sendObserver && socket.sendData === sendObserver && originalSend) socket.sendData = originalSend;
       listenerAttached = false;
       listenerMode = null;
+      socketListener = null;
+      connectionListeners = [];
+      nativeTransport = void 0;
       originalSend = null;
       sendObserver = null;
       socket = null;
@@ -2010,32 +2058,66 @@ ${DG_MOBILE_LAYOUT_CSS}
       socket = runtime.socket;
       const previousSend = runtime.socket.sendData;
       originalSend = previousSend;
+      const observerEpoch = transportEpoch;
       sendObserver = function observedSend(bean) {
-        if (!disposed && socket === runtime.socket) observeOutgoing(bean);
+        if (!disposed && !closedObserved && socket === runtime.socket && observerEpoch === transportEpoch) observeOutgoing(bean);
         return previousSend.call(this, bean);
       };
       runtime.socket.sendData = sendObserver;
+      const activeSocket = runtime.socket;
+      const listenerEpoch = transportEpoch;
+      nativeTransport = runtime.socket.socket;
+      socketListener = (bean) => {
+        if (!disposed && !closedObserved && socket === activeSocket && listenerEpoch === transportEpoch) receivedHandler(bean);
+      };
       try {
-        runtime.socket.on(EVENT_RECEIVED_SUCCESS, listenerOwner, receivedHandler);
+        runtime.socket.on(EVENT_RECEIVED_SUCCESS, listenerOwner, socketListener);
         listenerMode = "laya";
         listenerAttached = true;
       } catch {
         try {
-          runtime.socket.on(EVENT_RECEIVED_SUCCESS, receivedHandler);
+          runtime.socket.on(EVENT_RECEIVED_SUCCESS, socketListener);
           listenerMode = "emitter";
           listenerAttached = true;
         } catch {
           if (runtime.socket.sendData === sendObserver) runtime.socket.sendData = originalSend;
           socket = null;
+          socketListener = null;
           originalSend = null;
           sendObserver = null;
           return false;
         }
       }
+      const connectionEnded = () => {
+        if (disposed || socket !== activeSocket || closedObserved || listenerEpoch !== transportEpoch) return;
+        closedObserved = true;
+        resetTransport("DG\u5B98\u65B9\u9023\u7DDA\u4E2D\u65B7\uFF0C\u7B49\u5F85\u65B0\u9023\u7DDA\u540C\u6B65");
+      };
+      const connectionFailed = () => {
+        if (activeSocket.socket?.connected === false) connectionEnded();
+      };
+      const connectionOpened = () => {
+        if (disposed || socket !== activeSocket || !closedObserved || activeSocket.socket?.connected === false) return;
+        closedObserved = false;
+        detachSocket();
+        if (attach(runtime)) scheduleRefresh();
+      };
+      for (const entry of [
+        { event: "CONNECT_CLOSED", listener: connectionEnded },
+        { event: "CONNECT_FAILED", listener: connectionFailed },
+        { event: "CONNECT_SUCCESS", listener: connectionOpened }
+      ]) {
+        try {
+          if (listenerMode === "emitter") activeSocket.on(entry.event, entry.listener);
+          else activeSocket.on(entry.event, listenerOwner, entry.listener);
+          connectionListeners.push(entry);
+        } catch {
+        }
+      }
       return true;
     }
     function observeOutgoing(bean) {
-      const binding = readRequestBinding(bean, ownRequests);
+      const binding = readRequestBinding(bean, ownRequests, transportEpoch);
       if (!binding) return;
       bindings.push(binding);
       if (!binding.own && pending) {
@@ -2071,10 +2153,14 @@ ${DG_MOBILE_LAYOUT_CSS}
         if (pending) failClosed("\u5B98\u65B9\u5831\u8868\u56DE\u8986\u7121\u6CD5\u5C0D\u61C9\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
         return;
       }
-      if (!binding.own) return;
+      if (binding.transportEpoch !== transportEpoch) return;
+      if (!binding.own) {
+        if (reconciliationRequired) reconcileDrainedBindings();
+        return;
+      }
       const request = binding.own;
-      if (request.expired || request.cancelled || pending?.id !== request.id) {
-        if (!pending) reconciliationRequired = false;
+      if (request.transportEpoch !== transportEpoch || request.expired || request.cancelled || pending?.id !== request.id) {
+        reconcileDrainedBindings();
         return;
       }
       if (!responseLooksLikeUnfilteredBetReport(bean, binding)) {
@@ -2088,7 +2174,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       ensureFreshIdentity();
       if (disposed) return;
       const runtime = findRuntime(W);
-      if (!runtime || !attach(runtime)) {
+      if (!runtime || !refreshTransport(runtime)) {
         update(period, { value: null, status: "\u5F85DG\u5B98\u65B9\u5831\u8868\u5C31\u7DD2", updatedAt: null });
         remaining = [];
         lastCycleAt = 0;
@@ -2124,7 +2210,8 @@ ${DG_MOBILE_LAYOUT_CSS}
         taipeiDay: currentDay,
         sentAt: Date.now(),
         expired: false,
-        cancelled: false
+        cancelled: false,
+        transportEpoch
       };
       const bean = { cmd: 13, type: 1, token: runtime.playerInfo.token, object: period === "today" ? "1" : "7", list: ["", "", "12", "1"] };
       ownRequests.set(bean, request);
@@ -2143,34 +2230,53 @@ ${DG_MOBILE_LAYOUT_CSS}
       timeout = setTimeout(() => {
         if (disposed || pending?.id !== request.id) return;
         request.expired = true;
-        failClosed("DG\u5B98\u65B9\u5831\u8868\u903E\u6642\uFF0C\u5F85\u624B\u52D5\u540C\u6B65");
+        failClosed("DG\u5B98\u65B9\u5831\u8868\u903E\u6642\uFF0C\u7B49\u5F85\u524D\u6B21\u56DE\u8986\u5F8C\u81EA\u52D5\u91CD\u8A66\uFF1B\u53EF\u6838\u5C0D\u7D50\u7B97\u5F8C\u91CD\u9023");
       }, DG_OFFICIAL_TIMEOUT_MS);
     }
     function sendNext() {
       if (disposed || pending || reconciliationRequired) return;
+      if (!canRefresh()) return;
       const period = remaining.shift();
       if (period) requestPeriod(period);
+      else if (refreshQueued) scheduleRefresh();
     }
     function refresh(force = false) {
       if (disposed) return;
       ensureFreshIdentity();
+      if (force) refreshQueued = true;
+      const runtime = findRuntime(W);
+      if (runtime) refreshTransport(runtime);
       if (!canRefresh()) return;
+      if (closedObserved) return;
       if (pending) return;
       if (reconciliationRequired || bindings.length) return;
+      if (remaining.length) {
+        sendNext();
+        return;
+      }
       const now = Date.now();
-      if (!force && now - lastCycleAt < DG_OFFICIAL_REFRESH_MS) return;
+      if (!refreshQueued && now - lastCycleAt < DG_OFFICIAL_REFRESH_MS) return;
+      refreshQueued = false;
       lastCycleAt = now;
       remaining = ["today", "week"];
       sendNext();
     }
     function view() {
       ensureFreshIdentity();
-      return { platform: "DG", today: { ...today }, week: { ...week } };
+      const result = { platform: "DG", today: { ...today }, week: { ...week } };
+      if (pending && !pending.cancelled) {
+        const elapsed = Math.max(0, Date.now() - pending.sentAt);
+        if (elapsed >= 1e4) result[pending.period].status = `DG\u5B98\u65B9\u5831\u8868\u56DE\u61C9\u8F03\u6162\uFF0C\u5DF2\u7B49\u5F85${Math.floor(elapsed / 1e3)}\u79D2`;
+      }
+      return result;
     }
     function dispose() {
       if (disposed) return;
       disposed = true;
       clearInterval(interval);
+      if (refreshTimer !== null) clearTimeout(refreshTimer);
+      refreshTimer = null;
+      refreshQueued = false;
       clearTimeoutForPending();
       markCurrentCancelled();
       remaining = [];

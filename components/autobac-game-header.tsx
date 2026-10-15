@@ -54,8 +54,8 @@ export function AutoBacGameHeader({ platform, installed, disabled, onReconnect, 
         <View accessibilityViewIsModal testID="autobac-help" style={[s.helpCard, small && s.helpCardMobile]}>
           <View style={s.helpTop}><View><Text style={s.helpEyebrow}>AUTOBAC GUIDE</Text><Text style={s.helpTitle}>自動下注使用說明</Text></View><Pressable accessibilityRole="button" accessibilityLabel="關閉使用說明" onPress={() => setHelpOpen(false)} style={s.close}><MaterialIcons name="close" size={21} color="#ccceb9" /></Pressable></View>
           <ScrollView style={s.helpScroll} contentContainerStyle={{ paddingBottom: 2 }}>
-            <HelpSection number="01" title="登入後，先設定" text="登入成功後選擇 MT 或 DG。面板初始停止；須確認原生遊戲、桌卡、餘額與策略資料已接通，再設定策略與金額。面板出現不代表已送單成功；未就緒可使用下方工具匯出安全診斷。" />
-            <HelpSection number="02" title="配注與桌數" text="兩平台單桌可以選平注、馬丁或倍投；3 桌、5 桌及所有已載入桌固定平注。單桌升階必須等正式結算，和局不升階。" />
+            <HelpSection number="01" title="登入後，先設定" text="登入成功後進入 DG。面板初始停止；須確認原生遊戲、桌卡、餘額與策略資料已接通，再設定策略與金額。面板出現不代表已送單成功；未就緒可使用下方工具匯出安全診斷。" />
+            <HelpSection number="02" title="配注與桌數" text="DG 單桌可以選平注、馬丁或倍投；3 桌、5 桌及所有已載入桌固定平注。單桌升階必須等正式結算，和局不升階。" />
             <HelpSection number="03" title="你確認後，才開始" text="點開始並完成風險確認後才自動下注。停止只停止新增下注，不會取消平台已接受的注單；送出後請核對接受狀態與正式結算。" />
             <HelpSection number="04" title="紀錄與風控" text="可在面板查看下注紀錄、結算與損益，設定止盈止損。頂部常用按鈕固定顯示；開關說明只影響說明視窗，不會重新登入、重載遊戲或改變下注狀態。" />
             <View style={s.warning}><Text style={s.warningText}>自動下注不保證獲利；策略名稱使用原本地分析邏輯，不代表已呼叫外部 AI。所有操作風險由使用者自行評估與承擔。</Text></View>
