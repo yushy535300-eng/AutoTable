@@ -63,7 +63,7 @@ describe('shared read-only admin audit reader', () => {
     expect(html).toContain('桌台數量');
     expect(html).toContain('自動停止時間（分鐘）');
     expect(html).toContain('不限時');
-    expect(html).toContain('v3.2.14');
+    expect(html).toContain('v3.2.20');
     expect(html).toContain('使用設定');
     expect(html).toContain('免責確認');
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDgRiskInputDrafts } from '../lib/dg-risk-inputs';
+import { martingaleStopLossError, createDgRiskInputDrafts } from '../lib/dg-risk-inputs';
 import { parseRiskLimits } from '../lib/dg-risk-limits';
 
 describe('per-staking risk input drafts', () => {
@@ -34,6 +34,12 @@ describe('per-staking risk input drafts', () => {
   it('returns copies instead of exposing mutable shared drafts', () => {
     const drafts = createDgRiskInputDrafts('martingale');
     const initial = drafts.initial(); initial.stopLoss = '999';
-    expect(drafts.initial().stopLoss).toBe('2600');
+    expect(drafts.initial().stopLoss).toBe('');
   });
+});
+
+describe('manual martingale stop loss',()=>{
+ it('starts empty and requires manual input',()=>{expect(createDgRiskInputDrafts('martingale').initial().stopLoss).toBe('');expect(martingaleStopLossError('martingale','')).toContain('請輸入');});
+ it('rejects 2500 and 2599, accepts 2600 and greater',()=>{for(const value of ['2500','2599','-1','0'])expect(martingaleStopLossError('martingale',value)).toContain('低於 2,600');for(const value of ['2600','3000'])expect(martingaleStopLossError('martingale',value)).toBe('');});
+ it('does not impose this floor on flat mode',()=>{expect(martingaleStopLossError('flat','2500')).toBe('');expect(martingaleStopLossError('flat','')).toBe('');});
 });

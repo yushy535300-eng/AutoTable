@@ -1,5 +1,5 @@
 {
-  "version": "3.2.14-per-app-online-usage-records",
+  "version": "3.2.20-per-program-view-compact",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -77,5 +77,20 @@
       "interrupted"
     ],
     "reload": "v5-only-account-scoped-checkpoint; no-autostart; original-run-late-settlement; no-legacy-backfill"
-  }
+  },
+  "adminDesign": "three-original-logos; midnight-black-gold; Chinese labels; no-total-running-or-technical-note",
+  "martingaleStopLoss": {
+    "default": "empty",
+    "minimum": 2600,
+    "manualInput": true,
+    "inlineRedError": true
+  },
+  "manualCombinedPnl": {
+    "settledOnly": true,
+    "stopLossTakeProfit": "automatic-plus-observed-manual",
+    "serverUsage": "automatic-only",
+    "unknownAttribution": "blocked"
+  },
+  "onlineAccountLists": "per-program-member-page",
+  "onlineCountLayout": "compact-horizontal-with-view"
 }

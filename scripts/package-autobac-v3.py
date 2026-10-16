@@ -19,8 +19,15 @@ root_files = {
     'tailwind.config.js', 'theme.config.js', 'theme.config.d.ts', 'global.css',
     'nativewind-env.d.ts', 'expo-env.d.ts', 'drizzle.config.ts', 'eslint.config.js',
 }
+root_files.add('AUTOBAC-V3.2.15-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.16-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.17-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.18-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.19-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.20-DEPLOY.md')
 source_dirs = {'app', 'components', 'lib', 'server', 'shared', 'constants', 'hooks', 'scripts', 'drizzle'}
 validated_tests = {'user-presence.test.ts','user-presence-client.test.ts','admin-simple-records.test.ts','dg-risk-inputs.test.ts','dg-settings-records.test.ts','dg-settings-recorder.test.ts','dg-preflight-risk.test.ts','dg-risk-acknowledgements.test.ts','dg-usage-history.test.ts','dg-bet-summary.test.ts','dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
+validated_tests.add('dg-manual-ledger.test.ts')
 source_extensions = {'.ts', '.tsx', '.js', '.cjs', '.mjs', '.css', '.sql', '.md', '.py', '.sh'}
 validated_tests |= {'dg-usage-recorder.test.ts', 'dg-usage-records.test.ts', 'admin-audit-reader.test.ts'}
 required_source_data = {'lib/sa-table-labels.json'}
@@ -74,6 +81,11 @@ for name in root_files:
         entries[name] = file.read_bytes()
 
 required = [
+    "AUTOBAC-V3.2.20-DEPLOY.md", "public/admin-brand-v3220.css",
+    "AUTOBAC-V3.2.19-DEPLOY.md", "public/admin-brand-v3219.css", "server/admin-online-page.ts",
+    "AUTOBAC-V3.2.18-DEPLOY.md", "public/admin-brand-v3218.css", "scripts/test-presence-users-sql.cjs",
+    "AUTOBAC-V3.2.17-DEPLOY.md", "lib/dg-manual-ledger.ts", "tests/dg-manual-ledger.test.ts", "scripts/test-dg-manual-combined.cjs", "scripts/test-dg-martingale-manual.cjs",
+    "AUTOBAC-V3.2.15-DEPLOY.md", "public/admin-brand-v3215.css", "public/admin-brand-v3215/scarab.png", "public/admin-brand-v3215/autobac.png", "public/admin-brand-v3215/helper.png",
     "AUTOBAC-V3.2.14-DEPLOY.md", "public/admin-version.json",
     'shared/dg-usage-report.ts', 'lib/dg-usage-recorder.ts', 'server/dg-usage-records.ts', 'server/dg-usage-routes.ts', 'server/admin-audit-reader.ts',
     'tests/dg-usage-recorder.test.ts', 'tests/dg-usage-records.test.ts', 'tests/admin-audit-reader.test.ts', 'scripts/test-dg-usage-sql.cjs', 'scripts/test-admin-records-visual.cjs',

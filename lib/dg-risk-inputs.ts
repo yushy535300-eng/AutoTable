@@ -8,7 +8,7 @@ export interface DgRiskInputValues {
 export function createDgRiskInputDrafts(initialMode: DgRiskInputMode) {
   const drafts: Record<DgRiskInputMode, DgRiskInputValues> = {
     flat: { stopLoss: '', takeProfit: '' },
-    martingale: { stopLoss: '2600', takeProfit: '' },
+    martingale: { stopLoss: '', takeProfit: '' },
     doubling: { stopLoss: '', takeProfit: '' },
   };
   let active = initialMode;
@@ -22,4 +22,12 @@ export function createDgRiskInputDrafts(initialMode: DgRiskInputMode) {
       return { ...drafts[active] };
     },
   };
+}
+
+export function martingaleStopLossError(mode: DgRiskInputMode, value: string): string {
+  if (mode !== 'martingale') return '';
+  if (!value.trim()) return '請輸入馬丁止損金額，最低為 2,600。';
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '請輸入有效的馬丁止損金額，最低為 2,600。';
+  return amount < 2600 ? '止損金額低於 2,600，馬丁模式最低須設定 2,600。' : '';
 }

@@ -17,15 +17,21 @@ describe('simple administrator records', () => {
   });
   it('starts every per-site counter as unknown and rejects incomplete legacy presence data', () => {
     const html = adminPage(true);
-    expect(html).toContain('id="presence-autobac-online">待同步');
-    expect(html).toContain('id="presence-helper-online">待同步');
-    expect(html).toContain('id="presence-scarab-online">待同步');
-    expect(html).toContain('id="presence-total-online">待同步');
-    expect(html).toContain('id="presence-autobac-running">待同步');
+    expect(html).toContain('id="presence-autobac-online" data-waiting="true" aria-live="polite">待同步');
+    expect(html).toContain('id="presence-helper-online" data-waiting="true" aria-live="polite">待同步');
+    expect(html).toContain('id="presence-scarab-online" data-waiting="true" aria-live="polite">待同步');
+    expect(html).not.toContain('presence-total-online');
+    expect(html).not.toContain('presence-autobac-running');
     expect(html).toContain('data.applications.length!==3');
     expect(html).toContain("site.name!==expected.name");
-    expect(html).toContain('不以 0 代替');
-    expect(html).toContain('v3.2.14');
+    expect(html).not.toContain('presence-note');
+    expect(html).toContain('帳號總數');
+    expect(html).toContain('admin-brand-v3220.css');
+    expect(html.match(/class="program-logo"/g)).toHaveLength(3);
+    expect(html.match(/class="program-view-btn"/g)).toHaveLength(3);
+    expect(html).not.toContain('online-accounts');
+    expect(html).toContain('href="/admin/online?app=autobac"');
+    expect(html).toContain('v3.2.20');
     expect(adminPage(false)).not.toContain('presence-autobac-online');
   });
   it('keeps full settings folded with a concise summary and no fake profit figures', () => {
