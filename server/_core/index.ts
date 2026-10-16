@@ -1,3 +1,5 @@
+import {registerUserPresence} from "../user-presence";
+import {readRiskTrackerIdentity} from "../risk-acknowledgements";
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
@@ -10,6 +12,9 @@ import { createContext } from "./context";
 import { randomUUID } from "node:crypto";
 import { adminPage } from "../admin-page";
 import { registerRiskAcknowledgementRoutes } from "../risk-acknowledgement-routes";
+import { registerDgSettingsRoutes } from "../dg-settings-routes";
+import { registerDgUsageRoutes } from "../dg-usage-routes";
+import { registerAdminAuditReader } from "../admin-audit-reader";
 import { withRiskAcknowledgementSummaries } from "../risk-acknowledgements";
 import { getPool } from "../whitelist";
 import { listWhitelist, upsertWhitelist, setWhitelistEnabled, extendWhitelist, deleteWhitelist } from "../whitelist";
@@ -198,6 +203,10 @@ async function startServer() {
     next();
   };
   registerRiskAcknowledgementRoutes(app, requireAdmin);
+  registerDgSettingsRoutes(app, requireAdmin);
+  registerDgUsageRoutes(app);
+  registerAdminAuditReader(app, requireAdmin, { getPool });
+  registerUserPresence(app, server, requireAdmin, {getPool, readRiskTrackerIdentity, appId:"autobac", publicOrigin:process.env.PRESENCE_PUBLIC_ORIGIN || "https://autotable-o6a2.onrender.com"});
   const adminRedirect = (res: any, msg = "") =>
     res.redirect(303, "/admin" + (msg ? "?msg=" + encodeURIComponent(msg) : ""));
   app.get("/admin", async (req, res) => {

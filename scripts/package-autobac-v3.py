@@ -15,13 +15,14 @@ root_files = {
     '.dockerignore', '.gitignore', 'Dockerfile', 'package.json', 'pnpm-lock.yaml',
     'app.config.ts', 'app.config.js', 'babel.config.js', 'metro.config.js',
     'tsconfig.json', 'start-production.sh', 'AUTOBAC-V3-DEPLOY.md',
-    'DG-MOBILE-DIAGNOSTIC.md', 'RENDER_DEPLOY.md', 'AUTOBAC-DEPLOY.md', 'AUTOBAC-V3.1-DEPLOY.md', 'AUTOBAC-V3.2-DEPLOY.md', 'AUTOBAC-V3.2.2-DEPLOY.md', 'AUTOBAC-V3.2.3-DEPLOY.md', 'AUTOBAC-V3.2.4-DEPLOY.md', 'AUTOBAC-V3.2.5-DEPLOY.md', 'AUTOBAC-V3.2.6-DEPLOY.md', 'AUTOBAC-V3.2.7-DEPLOY.md', 'AUTOBAC-V3.2.8-DEPLOY.md', 'AUTOBAC-V3.2.9-DEPLOY.md', 'AUTOBAC-V3.2.10-DEPLOY.md', 'LICENSE', 'README.md',
+    'DG-MOBILE-DIAGNOSTIC.md', 'RENDER_DEPLOY.md', 'AUTOBAC-DEPLOY.md', 'AUTOBAC-V3.1-DEPLOY.md', 'AUTOBAC-V3.2-DEPLOY.md', 'AUTOBAC-V3.2.2-DEPLOY.md', 'AUTOBAC-V3.2.3-DEPLOY.md', 'AUTOBAC-V3.2.4-DEPLOY.md', 'AUTOBAC-V3.2.5-DEPLOY.md', 'AUTOBAC-V3.2.6-DEPLOY.md', 'AUTOBAC-V3.2.7-DEPLOY.md', 'AUTOBAC-V3.2.8-DEPLOY.md', 'AUTOBAC-V3.2.9-DEPLOY.md', 'AUTOBAC-V3.2.10-DEPLOY.md', 'AUTOBAC-V3.2.11-DEPLOY.md', 'AUTOBAC-V3.2.12-DEPLOY.md', 'AUTOBAC-V3.2.13-DEPLOY.md', 'AUTOBAC-V3.2.14-DEPLOY.md', 'LICENSE', 'README.md',
     'tailwind.config.js', 'theme.config.js', 'theme.config.d.ts', 'global.css',
     'nativewind-env.d.ts', 'expo-env.d.ts', 'drizzle.config.ts', 'eslint.config.js',
 }
 source_dirs = {'app', 'components', 'lib', 'server', 'shared', 'constants', 'hooks', 'scripts', 'drizzle'}
-validated_tests = {'dg-risk-acknowledgements.test.ts','dg-usage-history.test.ts','dg-bet-summary.test.ts','dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
+validated_tests = {'user-presence.test.ts','user-presence-client.test.ts','admin-simple-records.test.ts','dg-risk-inputs.test.ts','dg-settings-records.test.ts','dg-settings-recorder.test.ts','dg-preflight-risk.test.ts','dg-risk-acknowledgements.test.ts','dg-usage-history.test.ts','dg-bet-summary.test.ts','dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
 source_extensions = {'.ts', '.tsx', '.js', '.cjs', '.mjs', '.css', '.sql', '.md', '.py', '.sh'}
+validated_tests |= {'dg-usage-recorder.test.ts', 'dg-usage-records.test.ts', 'admin-audit-reader.test.ts'}
 required_source_data = {'lib/sa-table-labels.json'}
 asset_dirs = {'assets', 'public'}
 rejected_extensions = {'.log', '.har', '.db', '.sqlite', '.sqlite3', '.pem', '.key', '.p12', '.pfx'}
@@ -73,6 +74,11 @@ for name in root_files:
         entries[name] = file.read_bytes()
 
 required = [
+    "AUTOBAC-V3.2.14-DEPLOY.md", "public/admin-version.json",
+    'shared/dg-usage-report.ts', 'lib/dg-usage-recorder.ts', 'server/dg-usage-records.ts', 'server/dg-usage-routes.ts', 'server/admin-audit-reader.ts',
+    'tests/dg-usage-recorder.test.ts', 'tests/dg-usage-records.test.ts', 'tests/admin-audit-reader.test.ts', 'scripts/test-dg-usage-sql.cjs', 'scripts/test-admin-records-visual.cjs',
+    "AUTOBAC-V3.2.13-DEPLOY.md", "server/user-presence.ts", "lib/user-presence-client.ts", "server/admin-record-view.ts", "tests/user-presence.test.ts", "tests/user-presence-client.test.ts", "tests/admin-simple-records.test.ts",
+    'AUTOBAC-V3.2.11-DEPLOY.md', 'AUTOBAC-V3.2.12-DEPLOY.md', 'shared/dg-settings-snapshot.ts', 'lib/dg-settings-recorder.ts', 'server/dg-settings-records.ts', 'server/dg-settings-routes.ts', 'tests/dg-settings-records.test.ts', 'tests/dg-settings-recorder.test.ts', 'tests/dg-preflight-risk.test.ts', 'scripts/test-dg-risk-settings.cjs',
     'AUTOBAC-V3.2.10-DEPLOY.md', 'shared/dg-risk-statement.ts', 'lib/dg-risk-recorder.ts', 'server/risk-acknowledgements.ts', 'server/risk-acknowledgement-routes.ts', 'tests/dg-risk-acknowledgements.test.ts',
     "lib/dg-usage-history.ts", "tests/dg-usage-history.test.ts",
     "AUTOBAC-V3.2.9-DEPLOY.md", "components/autobac-logo.tsx", "assets/images/autobac-auto-master.png", "assets/images/autobac-auto-v329.png", "public/manifest-v329.webmanifest", "public/autobac-auto-v329-180.png", "public/autobac-auto-v329-192.png", "public/autobac-auto-v329-512.png", "public/autobac-auto-v329-32.png", "scripts/prepare-auto-icons.py",

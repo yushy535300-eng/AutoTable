@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:http';
 import { createHash } from 'node:crypto';
 import { DG_RISK_STATEMENT } from '../shared/dg-risk-statement';
 import { registerRiskAcknowledgementRoutes, acknowledgementDetailsPage } from '../server/risk-acknowledgement-routes';
+import { registerAdminAuditReader } from '../server/admin-audit-reader';
 import { ensureRiskAcknowledgements, recordRiskAcknowledgement, withRiskAcknowledgementSummaries, readRiskTrackerIdentity } from '../server/risk-acknowledgements';
 import { createDgRiskRecorder, bindDgRiskRecorder, unbindDgRiskRecorder } from '../lib/dg-risk-recorder';
 import { adminPage } from '../server/admin-page';
@@ -16,7 +17,12 @@ afterEach(() => vi.unstubAllGlobals());
 describe('acknowledgement route: only original session identity can be recorded', () => {
   let server: Server, origin: string;
   const deps = {
-    getPool: vi.fn(() => ({ query: vi.fn() }) as any),
+    getPool: vi.fn(() => ({ query: vi.fn(async (sql: string) => {
+      if (sql.includes('to_regclass')) return { rows: [{ relation: 'anonymous_test_relation' }] };
+      if (sql.includes('FROM tz_whitelist WHERE id=$1')) return { rows: [{ id: 8, platform: 'OFA', username: 'OwnerCase' }] };
+      if (sql.includes('COUNT(*)')) return { rows: [{ total: 0 }] };
+      return { rows: [] };
+    }) }) as any),
     readRiskTrackerIdentity: vi.fn(async () => ({ platform: 'OFA', username: 'OwnerCase' })),
     recordRiskAcknowledgement: vi.fn(async (..._args: any[]) => ({ ok: true as const, recordedAt })),
     listRiskAcknowledgements: vi.fn(async () => ({ account: { id: 8, platform: 'OFA', username: 'OwnerCase' }, rows: [], total: 0, page: 1, pages: 1 })),
@@ -24,6 +30,7 @@ describe('acknowledgement route: only original session identity can be recorded'
   beforeAll(async () => {
     const app = express(); app.use(express.json());
     registerRiskAcknowledgementRoutes(app, (req, res, next) => req.get('X-Admin-Token') === 'anonymous-admin' ? next() : res.status(401).end(), deps as any);
+    registerAdminAuditReader(app, (req, res, next) => req.get('X-Admin-Token') === 'anonymous-admin' ? next() : res.status(401).end(), { getPool: deps.getPool });
     server = createServer(app); await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     origin = `http://127.0.0.1:${(server.address() as any).port}`;
   });
@@ -101,7 +108,7 @@ describe('append-only acknowledgement persistence', () => {
     const details = acknowledgementDetailsPage({ account: { id: 8, platform: 'OFA', username: '<script>' }, total: 1, page: 1, pages: 1, rows: [{ recorded_at: recordedAt, statement_version: 'v1', game_platform: 'DG', statement_text: '<script>alert(1)</script>', statement_sha256: 'hash' }] });
     expect(details).not.toContain('<script>'); expect(details).toContain('&lt;script&gt;'); expect(details).toContain('不表示已開始下注');
     const page = adminPage(true, '', [{ id: 8, platform: 'OFA', username: 'Owner', enabled: true, note: 'keep', acknowledgement_count: 2, acknowledgement_latest: recordedAt }]);
-    expect(page).toContain('已勾選 · 2 次'); expect(page).toContain('/api/admin/whitelist/8/acknowledgements');
+    expect(page).toContain('已勾選 · 2 次'); expect(page).toContain('/api/admin/whitelist/8/records');
   });
 });
 

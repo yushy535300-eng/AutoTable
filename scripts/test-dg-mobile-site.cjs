@@ -161,6 +161,12 @@ function assertDgliMobileBody(raw) {
   const errors = [], externalRoutes = [], continuedExternal = [];
   const requests = [];
   const riskAcknowledgements = [];
+  const settingsRecords = [];
+  const usageRecords = [];
+  const presenceFrames = [];
+  await page.routeWebSocket('**/api/presence/ws', socket => {
+    socket.onMessage(message => {const data=JSON.parse(String(message));presenceFrames.push(data);if(data.type==='auth'){assert.equal(data.sessionId,'offline-mobile-session');socket.send(JSON.stringify({type:'authenticated'}));}else assert.equal(data.type,'state');});
+  });
   let failRiskRecording = false;
   let dgAuthorizationBody = null;
   let loginInputObservation = null;
@@ -208,11 +214,35 @@ function assertDgliMobileBody(raw) {
       const data = JSON.parse(request.postData());
       assert.equal(data.sessionId, "offline-mobile-session");
       assert.equal(data.checked, true);
-      assert.equal(data.statementVersion, "dg-risk-2026-10-15-v2");
+      assert.equal(data.statementVersion, "dg-risk-2026-10-16-v5-usage");
       assert.deepEqual(Object.keys(data).sort(), ["checked","eventId","sessionId","statementVersion"]);
       assert.match(data.eventId, /^[0-9a-f-]{36}$/i);
       riskAcknowledgements.push(data);
       return route.fulfill({status:failRiskRecording?503:200,contentType:"application/json",body:JSON.stringify(failRiskRecording?{ok:false,error:"recording_unavailable"}:{ok:true,recordedAt:"2026-10-15T13:00:00.000Z"})});
+    }
+
+    if (local && url.pathname === '/api/dg/settings-records') {
+      const data=JSON.parse(request.postData());
+      assert.equal(data.sessionId,'offline-mobile-session');assert.equal(data.statementVersion,'dg-risk-2026-10-16-v5-usage');
+      assert.deepEqual(Object.keys(data).sort(),['eventId','sessionId','settings','statementVersion']);
+      assert.equal(data.settings.gamePlatform,'DG');assert.equal(data.settings.baseAmount,200);assert.equal(data.settings.staking,'flat');
+      assert.equal(data.settings.stopLoss,600);assert.equal(data.settings.takeProfit,2000);assert.equal(data.settings.durationMinutes,2);
+      assert.equal(data.settings.provider,'combined');assert.equal(data.settings.tableCount,'1');assert.equal(data.settings.runMode,'once');
+      assert.equal(data.settings.startMode,'fresh');assert.equal(data.settings.selectionMode,'auto');assert.equal(data.settings.selectedTables.length,1);
+      for(const secret of [NATIVE_TOKEN,NATIVE_SECRET,'offline-mobile-session'])assert(!JSON.stringify(data.settings).includes(secret),'snapshot contains no credential');
+      settingsRecords.push(data);
+      return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,recordedAt:'2026-10-16T09:00:00.000Z'})});
+    }
+
+    if (local && url.pathname === '/api/dg/usage-records') {
+      const data=JSON.parse(request.postData());
+      assert.equal(data.sessionId,'offline-mobile-session');
+      assert.equal(data.statementVersion,'dg-risk-2026-10-16-v5-usage');
+      assert.deepEqual(Object.keys(data).sort(),['report','sessionId','statementVersion']);
+      assert.equal(data.report.runId,data.report.settingsEventId);
+      for(const secret of [NATIVE_TOKEN,NATIVE_SECRET,'offline-mobile-session'])assert(!JSON.stringify(data.report).includes(secret),'usage aggregate has no credential');
+      usageRecords.push(data);
+      return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,serverUpdatedAt:new Date().toISOString(),sequence:data.report.sequence,status:data.report.status})});
     }
 
     if (local && url.pathname === "/api/dg/proxy/enter") {
@@ -283,6 +313,7 @@ function assertDgliMobileBody(raw) {
     await page.getByText("安全登入", { exact: true }).click();
     await page.getByTestId("choose-dg").waitFor({ timeout: 30000 });
     assert.equal(requests.includes("dgli-login"), false, "no DGLI authorization before the DG choice");
+    await page.waitForTimeout(600);assert(presenceFrames.some(x=>x.type==='auth'),'Presence connects after login even before selecting DG');assert(presenceFrames.some(x=>x.type==='state'&&x.running===false),'Idle authenticated user is connected without auto betting');
     assert.equal(await page.getByTestId('choose-mt').count(), 0, 'MT entry is removed in DG-only release');
     assert.equal(await page.getByText('選擇 DG 或 MT', {exact: false}).count(), 0, 'No dual-platform instruction');
 
@@ -373,6 +404,41 @@ function assertDgliMobileBody(raw) {
     await frame.locator('#risk-cancel').click();failRiskRecording=false;
     console.log('PASS mobile full site acknowledgement: active session bridge, checkbox-only events, cancel retains event, bounded retry/no false-success, and zero wagers. Offline only.');
 
+    assert.equal(settingsRecords.length,0,'viewing, checking and canceling never record a started configuration');
+    assert.equal(usageRecords.length,0,'no historical usage is uploaded merely on loading, disclosure or cancel');
+    await frame.evaluate(()=>{const root=document.querySelector('#__dg_singlepage_panel__').shadowRoot;
+      const set=(id,value)=>{root.getElementById(id).value=String(value);root.getElementById(id).dispatchEvent(new Event('change',{bubbles:true}));};
+      set('single-staking','flat');set('base',200);set('cap',1000);set('stop-loss',600);set('take-profit',2000);set('duration-minutes',2);
+      root.getElementById('once').click();
+    });
+    await frame.locator('#ack').check();
+    await frame.evaluate(()=>{const r=document.querySelector('#__dg_singlepage_panel__').shadowRoot;window.dispatchEvent(new CustomEvent('autobac-dg-run-started',{detail:{eventId:crypto.randomUUID(),settings:{}}}));});
+    assert.equal(settingsRecords.length,0,'arbitrary game-page event cannot record settings');
+    await frame.locator('#risk-confirm').click();
+    await page.waitForFunction(()=>document.querySelector('iframe[title="DG 真人遊戲"]').contentWindow.__DG_SINGLEPAGE__.status().settingsSyncState==='synced');
+    assert.equal(settingsRecords.length,1,'one actual successful confirmation records one snapshot');
+    await page.waitForTimeout(600);assert(presenceFrames.some(x=>x.type==='state'&&x.running===true),'Native successful start updates running state');
+    await frame.waitForFunction(()=>window.__offlineMobile.sent.filter(x=>Number(x.cmd)===6).length===1);
+    await frame.evaluate(()=>{const b=window.__DG_SINGLEPAGE__.exportLedger().bets[0];
+      window.__offlineMobile.emit('RECEIVED_SUCCESS',{cmd:6,codeId:0,tableId:b.tableId,gameNo:b.gameNo,list:[JSON.stringify({banker:b.side==='莊'?b.amount:0,player:b.side==='閒'?b.amount:0})]});
+      window.__offlineMobile.emit('RECEIVED_SUCCESS',{cmd:1007,codeId:0,tableId:b.tableId,gameNo:b.gameNo,dList:[0,-b.amount]});
+    });
+    assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().pending.length),0,'explicit anonymous single-run settles before existing header checks');
+    assert.equal(await frame.evaluate(()=>window.__DG_SINGLEPAGE__.status().running),false,'single-run stops after its one batch');
+    assert.equal(settingsRecords.length,1);
+    await page.waitForTimeout(600);assert.equal(presenceFrames.filter(x=>x.type==='state').at(-1).running,false,'Stopped native run reports idle, not disconnected');
+    await page.waitForFunction(()=>document.querySelector('iframe[title="DG 真人遊戲"]').contentWindow.__DG_SINGLEPAGE__.status().pending.length===0);
+    const end=Date.now()+5000;while(Date.now()<end&&!usageRecords.some(x=>x.report.status==='stopped'&&x.report.result.settledCount===1))await page.waitForTimeout(50);
+    assert(usageRecords.length>=2,'new usage baseline and stop/settlement actually reach the parent authenticated endpoint');
+    assert(usageRecords.some(x=>x.report.elapsedMs===0),'the actual new-run baseline starts at zero');
+    assert(usageRecords.every(x=>x.report.runId===settingsRecords[0].eventId),'settings and usage are joined by the same UUID');
+    const finalUsage=usageRecords.filter(x=>x.report.status==='stopped').at(-1)?.report;
+    assert.equal(finalUsage.result.settledPnl,-200);assert.equal(finalUsage.result.pendingCount,0);
+    assert.equal(finalUsage.result.settledCount,1);assert.equal(finalUsage.durationMinutes,2);
+    console.log('PASS mobile whole-site usage: new disclosure, zero baseline, same settings/run UUID, authenticated elapsed/stop and original-run late settlement aggregate; no legacy usage upload.');
+    console.log('PASS mobile presence: login-only connected, running then idle, credential only in private auth frame; anonymous mocked WS.');
+    console.log('PASS mobile complete site settings: real manual confirmation -> one authenticated snapshot, actual settings, no credential, no cancel/fabricated-event records. Anonymous offline only.');
+
     const header=page.getByTestId('autobac-game-header');
     await page.waitForFunction(() => [...document.querySelector('[data-testid="autobac-header-logo"]').querySelectorAll('img')].some(img=>img.complete&&img.naturalWidth===512));
     await frame.evaluate(()=>window.__HEADER_DOCUMENT_MARKER__='same-loaded-game');
@@ -421,7 +487,7 @@ function assertDgliMobileBody(raw) {
     assert.equal(continuedExternal.length, 0, "no external request may be continued");
     assert.equal(externalRoutes.some(route => /\/MTLI\/|ofalive99|\/api\/mt\//i.test(route)), false, 'No MT authorization or vendor requests');
     assert.deepEqual(errors, [], "offline Android flow has no browser runtime errors");
-    console.log("PASS offline-only Android 440x894 mobile site: original access/DGLI Mobile authorization, same-origin V3.2.9 WAP foreground, single Mulit click, 8 complete source-gated native cards, stopped panel, wallet/8 strategies, credential-free diagnostics, and zero cmd 6 sends.");
+    console.log("PASS offline-only Android 440x894 mobile site: original access/DGLI Mobile authorization, same-origin V3.2.9 WAP foreground, single Mulit click, 8 complete source-gated native cards, stopped panel, wallet/8 strategies, credential-free diagnostics, and only one explicitly confirmed anonymous cmd 6 batch (no real platform traffic).");
   } catch (error) {
     const frameDebug = await page.evaluate(() => [...document.querySelectorAll("iframe")].map((iframe) => {
       try { return { src: iframe.getAttribute("src"), href: iframe.contentWindow?.location.href, navCount: iframe.contentWindow?.__MULTI_NAV_COUNT__, stage: !!iframe.contentWindow?.Laya?.stage, panel: !!iframe.contentWindow?.__DG_SINGLEPAGE__ }; }

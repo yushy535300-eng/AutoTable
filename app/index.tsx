@@ -1,3 +1,4 @@
+import {connectUserPresence} from '../lib/user-presence-client';
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AccessScreen, getDgLoginUrlFromPlatform } from '@/lib/legacy-platform-screen';
@@ -10,6 +11,8 @@ import { createDgOperationCapture, captureDgViewport } from '@/lib/dg-operation-
 import { enterDgForeground, installDgFramePanel, stopDgFramePanel, dgFrameHasPending, dgFramePanelStatus, preserveDgFrameLedger, exportDgFrameMobilePublicSources, dgFrameInstallMode } from '@/lib/dg-frame-installer';
 import autoBacBuild from '@/public/autobac-version.json';
 import { createDgRiskRecorder, bindDgRiskRecorder, unbindDgRiskRecorder } from '@/lib/dg-risk-recorder';
+import { createDgSettingsRecorder, bindDgSettingsRecorder, unbindDgSettingsRecorder } from '../lib/dg-settings-recorder';
+import { createDgUsageRecorder, bindDgUsageRecorder, unbindDgUsageRecorder } from '../lib/dg-usage-recorder';
 
 type Auth = { sessionId: string; token: string; platform: 'TZ' | 'OFA' };
 type Departure = 'choose' | 'logout' | 'retry';
@@ -37,6 +40,14 @@ export default function AutoBacScreen() {
   const logoutMutation = trpc.trackerAccess.logout.useMutation();
   const check = trpc.trackerAccess.checkSession.useQuery({ sessionId: auth?.sessionId || 'not-authenticated' }, { enabled: !!auth, refetchInterval: 30000, retry: 1 });
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !auth?.sessionId || authInvalid) return;
+    const presence = connectUserPresence(auth.sessionId, () => {
+      try { return (frameRef.current?.contentWindow as any)?.__DG_SINGLEPAGE__?.status?.().running === true; }
+      catch { return false; }
+    });
+    return () => presence.dispose();
+  }, [auth?.sessionId, authInvalid]);
   const launch = useCallback(async (current: Auth, target: GamePlatform, device: GameDevice) => {
     if (target !== 'DG' || launchBusy.current) return;
     launchBusy.current = true;
@@ -95,6 +106,8 @@ export default function AutoBacScreen() {
     if (!auth || !gameUrl || selected !== 'DG') return;
     let attempts = 0, hallAttempts = 0;
     const riskRecorder = createDgRiskRecorder(auth.sessionId);
+    const settingsRecorder = createDgSettingsRecorder(auth.sessionId);
+    const usageRecorder = createDgUsageRecorder(auth.sessionId);
     const requestedMode = /^\/ddnewwap\//.test(gameUrl) ? 'mobile' : 'desktop';
     const tick = () => {
       const frame = frameRef.current;
@@ -102,7 +115,7 @@ export default function AutoBacScreen() {
       const mode = dgFrameInstallMode(frame, requestedMode);
       if (authInvalid) { stopDgFramePanel(frame); preserveDgFrameLedger(frame); return; }
       if (captureRunning) { stopDgFramePanel(frame); return; }
-      bindDgRiskRecorder(frame, riskRecorder);
+      bindDgRiskRecorder(frame, riskRecorder); bindDgSettingsRecorder(frame, settingsRecorder); bindDgUsageRecorder(frame, usageRecorder);
       // The compatible panel can display stopped/waiting state before MultiLobby
       // finishes loading. Do not make its visibility depend on a hall click.
       if (mode === 'desktop') {
@@ -122,7 +135,7 @@ export default function AutoBacScreen() {
       const existing = dgFramePanelStatus(frame); preserveDgFrameLedger(frame);
       if (existing.installed) { setInstalled(true); setError(''); setMessage(existing.connected ? (frame.contentWindow?.__DG_SINGLEPAGE__?.status?.().running ? '百家工程師執行中；請核對正式接受與結算' : '面板已接上桌卡；自動下注已停止，不會自行恢復') : '面板已載入，但原生桌卡尚未接通；未送單'); return; }
       const outcome = installDgFramePanel(frame, mode);
-      if (outcome === 'installed') { bindDgRiskRecorder(frame, riskRecorder); setInstalled(true); setError(''); return; }
+      if (outcome === 'installed') { bindDgRiskRecorder(frame, riskRecorder); bindDgSettingsRecorder(frame, settingsRecorder); bindDgUsageRecorder(frame, usageRecorder); setInstalled(true); setError(''); return; }
       if (++attempts < 4) return;
       if (outcome === 'cross-origin') setError('DG 目前不是可存取的原同源入口，面板未安裝；請確認原平台授權及入口。');
       else if (outcome === 'blocked') setError('DG 頁面阻止面板載入，尚未啟用自動操作。');
@@ -132,6 +145,8 @@ export default function AutoBacScreen() {
     return () => {
       clearInterval(timer); stopDgFramePanel(frameRef.current);
       unbindDgRiskRecorder(frameRef.current, riskRecorder);
+      unbindDgSettingsRecorder(frameRef.current, settingsRecorder);
+      unbindDgUsageRecorder(frameRef.current, usageRecorder);
     };
   }, [auth, gameUrl, authInvalid, selected, gameDevice, captureRunning]);
 
@@ -145,7 +160,8 @@ export default function AutoBacScreen() {
   useEffect(()=>{
     if(Platform.OS!=='web'||!gameUrl)return;
     const leaving=(event:BeforeUnloadEvent)=>{
-      stopAndPreserve();
+      try{frameRef.current?.contentWindow?.__DG_SINGLEPAGE__?.flushUsageKeepalive?.();}catch{/* Original page may already be inaccessible. */}
+      preserveDgFrameLedger(frameRef.current);
       const pending=dgFrameHasPending(frameRef.current);
       if(pending){event.preventDefault();event.returnValue='';}
     };

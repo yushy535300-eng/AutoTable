@@ -1,5 +1,5 @@
 {
-  "version": "3.2.10-dg-risk-records",
+  "version": "3.2.14-per-app-online-usage-records",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -31,7 +31,51 @@
     "enabled": true,
     "scope": "whitelist-account",
     "event": "checkbox_checked",
-    "statementVersion": "dg-risk-2026-10-15-v2",
+    "statementVersion": "dg-risk-2026-10-16-v5-usage",
     "noIpOrCredentials": true
+  },
+  "settingsRecords": {
+    "enabled": true,
+    "when": "successful_start_snapshot",
+    "account": "server_verified_session",
+    "statementVersion": "dg-risk-2026-10-16-v5-usage"
+  },
+  "riskExecution": {
+    "martingaleMinimumStopLoss": 2600,
+    "preflightIncludesPendingPrincipal": true,
+    "freshResetsRoundPnl": true,
+    "resumePreservesRoundPnl": true,
+    "capStopsNewWagers": true
+  },
+  "flatRiskInputs": "No default loss/profit; user-entered smaller positive values allowed; separate per-staking drafts.",
+  "adminRecords": "simple-usage-settings-and-acknowledgements; full-details-collapsed",
+  "presence": {
+    "sites": [
+      "autobac",
+      "baccarat-helper",
+      "scarab-heart"
+    ],
+    "identity": "platform+username",
+    "transport": "authenticated-same-origin-websocket",
+    "requiresAllSiteDeployments": true,
+    "leaseSeconds": 25,
+    "schemaVersion": 2,
+    "perApplicationCounts": true,
+    "globalCounts": "platform+username union, not per-site sum"
+  },
+  "usageReporting": {
+    "enabled": true,
+    "source": "autobac-client-reported",
+    "scope": "server-verified-whitelist-account",
+    "settingsLinked": true,
+    "legacyMissing": "not-reported; never-inferred-from-acknowledgement",
+    "noScrollOrCredentials": true,
+    "statementVersion": "dg-risk-2026-10-16-v5-usage",
+    "statuses": [
+      "active",
+      "stopped",
+      "interrupted"
+    ],
+    "reload": "v5-only-account-scoped-checkpoint; no-autostart; original-run-late-settlement; no-legacy-backfill"
   }
 }

@@ -73,10 +73,24 @@ async function swipe(page, client, locator, direction) {
     const timed = await openOfflinePage(context, [{ id: 702, method: 'Ki' }]);
     try {
       await installClock(timed);
+      await timed.evaluate(() => {
+        window.__anonymousUsageReports = []; window.__anonymousSettingsEvents = [];
+        window.addEventListener('autobac-dg-usage-report', event => window.__anonymousUsageReports.push(event.detail.report));
+        window.addEventListener('autobac-dg-run-started', event => window.__anonymousSettingsEvents.push(event.detail));
+      });
       await configure(timed, { count: '1', staking: 'flat' });
       await timed.evaluate(() => document.getElementById('__dg_singlepage_panel__').shadowRoot.getElementById('duration-minutes').value = '1');
       assert.equal(await timed.evaluate(() => window.__DG_SINGLEPAGE__.status().usage.started), false);
       await approveAndStart(timed); await waitForCmd6(timed, 1, 'first anonymous native packet');
+      const startReports = await timed.evaluate(() => ({ reports: window.__anonymousUsageReports, settings: window.__anonymousSettingsEvents }));
+      assert.equal(startReports.settings.length, 1, 'actual trusted start emits one settings snapshot');
+      assert.equal(startReports.reports.length, 1, 'actual trusted start emits the zero-second usage baseline');
+      assert.equal(startReports.reports[0].runId, startReports.settings[0].eventId, 'settings event and usage report share one run UUID');
+      assert.equal(startReports.reports[0].settingsEventId, startReports.reports[0].runId);
+      assert.equal(startReports.reports[0].sequence, 0);
+      assert.equal(startReports.reports[0].elapsedMs, 0);
+      assert.equal(startReports.reports[0].status, 'active');
+      assert.equal(startReports.reports[0].stopCode, null);
       const packet = await timed.evaluate(() => window.__offlineMobile.sent.find(m => m.cmd === 6));
       const payload = packetPayload(packet); delete payload.info;
       await timed.evaluate(msg => window.__offlineMobile.emit('RECEIVED_SUCCESS', msg), { cmd: 6, codeId: 0, tableId: packet.tableId, gameNo: packet.gameNo, list: [JSON.stringify(payload)] });
@@ -97,6 +111,13 @@ async function swipe(page, client, locator, direction) {
       assert.equal(previousUsage.elapsedText, '00:01:00');
       assert.equal(previousUsage.pnl, 100, 'late settlement belongs to completed usage');
       assert.equal(previousUsage.pendingCount, 0);
+      const usageReports = await timed.evaluate(() => window.__anonymousUsageReports);
+      const stopped = usageReports.find(report => report.status === 'stopped');
+      const settledUpdate = usageReports.at(-1);
+      assert(stopped && stopped.stopCode === 'time_limit' && stopped.endedAt !== null, 'auto timeout sends an enumerated stopped report');
+      assert.equal(settledUpdate.runId, startReports.reports[0].runId, 'late settlement stays on the stopped run, not a future run');
+      assert.equal(settledUpdate.result.settledPnl, 100, 'late formal settlement updates aggregate only');
+      assert.equal(settledUpdate.result.pendingCount, 0);
       const timedHost = timed.locator('#__dg_singlepage_panel__');
       await timedHost.locator('#nav-logs').click();
       await timedHost.locator('#last-usage').click();
@@ -111,9 +132,76 @@ async function swipe(page, client, locator, direction) {
       assert.equal(restartedUsage[0].pnl, 0);
       assert.equal(restartedUsage[1].pnl, 100, 'new start never clears last run winnings');
       assert.equal(restartedUsage[1].elapsedText, '00:01:00');
-      console.log('PASS usage history: last duration/profit in record UI, pending settlement backfill, restart zero, previous record retained.');
+      console.log('PASS usage history: shared settings/run UUID, zero baseline, enumerated stop, late settlement aggregate, record UI, restart zero, previous record retained.');
       console.log('PASS production native timer: 1-minute auto stop, no extra packet, accepted lock preserved and settled, frozen display, restart resets. Offline only.');
     } finally { await stopAndClose(timed); }
+    const recovered = await openOfflinePage(context, [{ id: 705, method: 'ei' }]);
+    try {
+      await installClock(recovered);
+      await recovered.evaluate(() => {
+        const values = new Map();
+        Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+          getItem: key => values.has(key) ? values.get(key) : null,
+          setItem: (key, value) => values.set(key, String(value)),
+          removeItem: key => values.delete(key), clear: () => values.clear(), key: index => [...values.keys()][index] || null,
+          get length() { return values.size; },
+        }});
+        window.__anonymousUsageReports = [];
+        window.addEventListener('autobac-dg-usage-report', event => window.__anonymousUsageReports.push(event.detail.report));
+      });
+      await configure(recovered, { count: '1', staking: 'flat' }); await approveAndStart(recovered); await waitForCmd6(recovered, 1, 'checkpoint old packet');
+      const old = await recovered.evaluate(() => ({ report: window.__anonymousUsageReports[0], packet: window.__offlineMobile.sent.find(m => m.cmd === 6) }));
+      const oldPayload = packetPayload(old.packet); delete oldPayload.info;
+      await recovered.evaluate(msg => window.__offlineMobile.emit('RECEIVED_SUCCESS', msg), { cmd: 6, codeId: 0, tableId: old.packet.tableId, gameNo: old.packet.gameNo, list: [JSON.stringify(oldPayload)] });
+      await recovered.evaluate(() => window.__DG_SINGLEPAGE__.stop('已停止；保留待結算帳本'));
+      const stopped = await recovered.evaluate(id => window.__anonymousUsageReports.find(r => r.runId === id && r.status === 'stopped'), old.report.runId);
+      assert(stopped && stopped.stopCode === 'manual', 'manual stop has a real stopped report before rebuilding');
+      const oldReportCount = await recovered.evaluate(id => window.__anonymousUsageReports.filter(r => r.runId === id).length, old.report.runId);
+      await recovered.evaluate(() => window.__DG_SINGLEPAGE__.dispose());
+      await recovered.addScriptTag({ path: require('node:path').resolve(__dirname, '../public/dg-direct-bet-console.js') });
+      const beforeNew = await recovered.evaluate(id => window.__anonymousUsageReports.filter(r => r.runId === id), old.report.runId);
+      assert.equal(beforeNew.length, oldReportCount, 'rebuild does not backfill or replay a stopped checkpoint without a new observation');
+      assert.equal(await recovered.evaluate(() => window.__DG_SINGLEPAGE__.status().running), false, 'rebuild never auto-starts a recovered run');
+      await recovered.evaluate(msg => window.__offlineMobile.emit('RECEIVED_SUCCESS', msg), { cmd: 1007, codeId: 0, tableId: old.packet.tableId, gameNo: old.packet.gameNo, dList: [0, 77] });
+      const after = await recovered.evaluate(id => ({ history: window.__DG_SINGLEPAGE__.usageHistory(), ledger: window.__DG_SINGLEPAGE__.exportLedger(), reports: window.__anonymousUsageReports.filter(r => r.runId === id) }), old.report.runId);
+      const late = after.reports.at(-1);
+      assert.equal(late.runId, old.report.runId, 'late settlement uses the original checkpointed UUID after reload');
+      assert.equal(late.status, 'stopped'); assert(late.sequence > stopped.sequence, `recovered sequence remains strictly monotonic: ${JSON.stringify({ stopped, late, ledger: after.ledger, history: after.history, reports: after.reports })}`);
+      assert.equal(late.result.settledPnl, 77); assert.equal(late.result.pendingCount, 0);
+      assert.equal(after.history.find(r => r.id === old.report.runId).pnl, 77, 'late settlement remains attributed to the original recovered run');
+      console.log('PASS anonymous v5 checkpoint reload: no history backfill, stopped UUID/sequence survives rebuild, and late settlement stays on the source run.');
+    } finally { await stopAndClose(recovered); }
+    const interrupted = await openOfflinePage(context, [{ id: 706, method: 'Ki' }]);
+    try {
+      await installClock(interrupted);
+      await interrupted.evaluate(() => {
+        const values = new Map();
+        Object.defineProperty(window, 'localStorage', { configurable: true, value: {
+          getItem: key => values.has(key) ? values.get(key) : null,
+          setItem: (key, value) => values.set(key, String(value)),
+          removeItem: key => values.delete(key), clear: () => values.clear(), key: index => [...values.keys()][index] || null,
+          get length() { return values.size; },
+        }});
+        window.__anonymousUsageReports = [];
+        window.addEventListener('autobac-dg-usage-report', event => window.__anonymousUsageReports.push(event.detail.report));
+      });
+      await configure(interrupted, { count: '1', staking: 'flat' }); await approveAndStart(interrupted); await waitForCmd6(interrupted, 1, 'interrupted checkpoint packet');
+      const active = await interrupted.evaluate(() => ({ report: window.__anonymousUsageReports[0], packet: window.__offlineMobile.sent.find(m => m.cmd === 6) }));
+      const activePayload = packetPayload(active.packet); delete activePayload.info;
+      await interrupted.evaluate(msg => window.__offlineMobile.emit('RECEIVED_SUCCESS', msg), { cmd: 6, codeId: 0, tableId: active.packet.tableId, gameNo: active.packet.gameNo, list: [JSON.stringify(activePayload)] });
+      await interrupted.evaluate(() => window.__DG_SINGLEPAGE__.dispose());
+      const beforeRebuild = await interrupted.evaluate(id => window.__anonymousUsageReports.filter(r => r.runId === id), active.report.runId);
+      assert(beforeRebuild.every(r => r.status === 'active'), 'destruction sends only the permitted final active snapshot');
+      await interrupted.addScriptTag({ path: require('node:path').resolve(__dirname, '../public/dg-direct-bet-console.js') });
+      const recoveredState = await interrupted.evaluate(id => ({ running: window.__DG_SINGLEPAGE__.status().running, run: window.__DG_SINGLEPAGE__.usageHistory().find(r => r.id === id), reports: window.__anonymousUsageReports.filter(r => r.runId === id) }), active.report.runId);
+      assert.equal(recoveredState.running, false); assert.deepEqual({ state: recoveredState.run.state, endedAt: recoveredState.run.endedAt }, { state: 'interrupted', endedAt: null });
+      assert.equal(recoveredState.reports.length, beforeRebuild.length, 'reload does not invent an active/stopped recovery report');
+      await interrupted.evaluate(msg => window.__offlineMobile.emit('RECEIVED_SUCCESS', msg), { cmd: 1007, codeId: 0, tableId: active.packet.tableId, gameNo: active.packet.gameNo, dList: [0, -35] });
+      const interruptedLate = await interrupted.evaluate(id => window.__anonymousUsageReports.filter(r => r.runId === id).at(-1), active.report.runId);
+      assert.deepEqual({ status: interruptedLate.status, endedAt: interruptedLate.endedAt, stopCode: interruptedLate.stopCode, settledPnl: interruptedLate.result.settledPnl }, { status: 'interrupted', endedAt: null, stopCode: null, settledPnl: -35 });
+      assert(interruptedLate.sequence > beforeRebuild.at(-1).sequence, 'interrupted late settlement retains the original monotonic sequence');
+      console.log('PASS anonymous active reload: recovered run is interrupted (not active/stopped), preserves no end time, and late settlement stays reportable.');
+    } finally { await stopAndClose(interrupted); }
     const deadline = await openOfflinePage(context, [{ id: 703, method: 'ei' }, { id: 704, method: 'Ki' }]);
     try {
       await installClock(deadline); await configure(deadline, { count: 'all', staking: 'flat' });

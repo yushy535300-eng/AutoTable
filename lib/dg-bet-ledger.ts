@@ -8,7 +8,7 @@ export type DgBet = {
   provider?: string;
   attributionUncertain?: boolean;
 };
-export type DgLedgerState = {version:1; levels:Record<string,number>; bets:DgBet[]; roundStartedAt?:number};
+export type DgLedgerState = {version:1; levels:Record<string,number>; bets:DgBet[]; roundStartedAt?:number;roundStartIndex?:number};
 export function martingaleAmount(base:number, level:number):number {
   if (!Number.isSafeInteger(base) || base <= 0 || !Number.isInteger(level) || level < 0 || level > 30) throw new Error('基本金額／階級無效');
   const amount=base*(2**(level+1)-1);
