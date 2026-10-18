@@ -27,6 +27,7 @@ root_files.add('AUTOBAC-V3.2.19-DEPLOY.md')
 root_files.add('AUTOBAC-V3.2.20-DEPLOY.md')
 root_files.add('AUTOBAC-V3.2.21-DEPLOY.md')
 root_files.add('AUTOBAC-V3.2.22-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.23-DEPLOY.md')
 source_dirs = {'app', 'components', 'lib', 'server', 'shared', 'constants', 'hooks', 'scripts', 'drizzle'}
 validated_tests = {'user-presence.test.ts','user-presence-client.test.ts','admin-simple-records.test.ts','dg-risk-inputs.test.ts','dg-settings-records.test.ts','dg-settings-recorder.test.ts','dg-preflight-risk.test.ts','dg-risk-acknowledgements.test.ts','dg-usage-history.test.ts','dg-bet-summary.test.ts','dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
 validated_tests.add('dg-manual-ledger.test.ts')
@@ -83,6 +84,7 @@ for name in root_files:
         entries[name] = file.read_bytes()
 
 required = [
+    "AUTOBAC-V3.2.23-DEPLOY.md", "scripts/test-dg-initial-settings.cjs",
     "AUTOBAC-V3.2.22-DEPLOY.md", "scripts/test-dg-staking-switch.cjs",
     "AUTOBAC-V3.2.21-DEPLOY.md",
     "AUTOBAC-V3.2.20-DEPLOY.md", "public/admin-brand-v3220.css",

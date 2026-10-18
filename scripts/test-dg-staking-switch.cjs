@@ -240,13 +240,30 @@ async function testRunningAndPendingLocks(browser) {
     await waitForControlsLocked(page, true, "running with automatic pending packets");
     await assertUnchangedSize(page, baseline, "running lock");
 
-    // Stop through the panel UI.  It halts new sends but must not unlock the
-    // selects until every previously submitted automatic bet has settled.
+    // Stop through the panel UI. It halts new sends but deliberately leaves the
+    // next-run draft editable; the unresolved original packets remain frozen and
+    // block a new start before the acknowledgement dialog can open.
     await ui.compactStop.click();
     let stopped = await status(page);
     assert.equal(stopped.running, false, "the visible stop control stops automation");
     assert.equal(stopped.pending.length, 3, "stopping does not discard automatic pending bets");
-    await waitForControlsLocked(page, true, "stopped with automatic packets still pending");
+    await waitForControlsLocked(page, false, "stopped with automatic packets keeps the next-run draft editable");
+    const originalPending = await page.evaluate(() => window.__DG_SINGLEPAGE__.exportLedger().bets.filter((bet) => ["reserved", "submitted", "accepted", "uncertain"].includes(bet.state)).map((bet) => ({ key: bet.key, amount: bet.amount, level: bet.level, scope: bet.scope, staking: bet.staking })));
+    await chooseCount(page, "5");
+    await page.evaluate(() => window.__DG_SINGLEPAGE__.start());
+    const blockedStart = await page.evaluate(() => {
+      const shadow = document.querySelector("#__dg_singlepage_panel__").shadowRoot;
+      return {
+        dialogHidden: shadow.getElementById("risk-dialog").hidden,
+        running: window.__DG_SINGLEPAGE__.status().running,
+        pending: window.__DG_SINGLEPAGE__.exportLedger().bets.filter((bet) => ["reserved", "submitted", "accepted", "uncertain"].includes(bet.state)).map((bet) => ({ key: bet.key, amount: bet.amount, level: bet.level, scope: bet.scope, staking: bet.staking })),
+        sent: window.__offlineMobile.sent.filter((message) => Number(message?.cmd) === 6 && message.type === 1).length
+      };
+    });
+    assert.equal(blockedStart.dialogHidden, true, "pending start is blocked before the acknowledgement dialog can imply that it may proceed");
+    assert.equal(blockedStart.running, false, "pending start never resumes automation");
+    assert.deepEqual(blockedStart.pending, originalPending, "editing the next-run count never changes original pending amount/scope/staking/level");
+    assert.equal(blockedStart.sent, 3, "blocked pending start sends no additional automatic packet");
     const submitted = await automaticPackets(page);
     assert.equal(submitted.length, 3, "stopping adds no extra automatic packets");
     await settleAutomaticPackets(page, submitted);
@@ -259,15 +276,23 @@ async function testRunningAndPendingLocks(browser) {
     await assertUnchangedSize(page, baseline, "automatic full-settlement unlock");
 
     // A native/manual packet is injected only through the fixture's observed
-    // socket, never through the tool's internal state.  It independently keeps
-    // the selects locked until its own receipt and settlement complete.
+    // socket, never through the tool's internal state. It also leaves the draft
+    // editable while independently blocking a new start.
     const manual = { cmd: 6, tableId: 999, gameNo: "offline-manual-lock", bet: { banker6: 100 } };
     await sendManual(page, manual);
     await page.waitForFunction(() => window.__DG_SINGLEPAGE__.status().manualPending.length === 1, null, { timeout: 2500 });
     const manualLocked = await status(page);
     assert.equal(manualLocked.running, false, "a manual pending packet does not restart automation");
     assert.equal(manualLocked.manualPending.length, 1, "fixture socket records one manual pending packet");
-    await waitForControlsLocked(page, true, "manual packet pending");
+    await waitForControlsLocked(page, false, "manual packet pending keeps the next-run draft editable");
+    await page.evaluate(() => window.__DG_SINGLEPAGE__.start());
+    const manualBlocked = await page.evaluate(() => {
+      const shadow = document.querySelector("#__dg_singlepage_panel__").shadowRoot;
+      return { dialogHidden: shadow.getElementById("risk-dialog").hidden, running: window.__DG_SINGLEPAGE__.status().running, sent: window.__offlineMobile.sent.filter((message) => Number(message?.cmd) === 6 && message.type === 1).length };
+    });
+    assert.equal(manualBlocked.dialogHidden, true, "manual pending start is blocked before acknowledgement");
+    assert.equal(manualBlocked.running, false, "manual pending never restarts automation");
+    assert.equal(manualBlocked.sent, 3, "manual pending start sends no automatic packet");
 
     await receive(page, { cmd: 6, codeId: 0, tableId: manual.tableId, gameNo: manual.gameNo, list: [JSON.stringify(manual.bet)] });
     await receive(page, { cmd: 1007, codeId: 0, tableId: manual.tableId, gameNo: manual.gameNo, dList: [0, 0] });
@@ -292,7 +317,7 @@ async function testRunningAndPendingLocks(browser) {
     browser = await chromium.launch({ executablePath: "/usr/bin/chromium", headless: true, args: ["--no-sandbox"] });
     await testIdleSwitchesAndDrafts(browser);
     await testRunningAndPendingLocks(browser);
-    console.log("PASS offline-only DG staking switch: real select changes cover 3/5/all coercion, flat multi-table retention, independent drafts, 2,600 validation, running/manual pending locks, full-settlement unlock, and unchanged panel size. No platform connection or credentials were used.");
+    console.log("PASS offline-only DG staking switch: real select changes cover 3/5/all coercion, flat multi-table retention, independent drafts, 2,600 validation, running/busy control locks, stopped-pending editable drafts with pre-acknowledgement start blocks, full settlement, and unchanged panel size. No platform connection or credentials were used.");
   } finally {
     await browser?.close();
   }

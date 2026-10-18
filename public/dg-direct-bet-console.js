@@ -17014,7 +17014,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
       const settled = ledger.settle(msg);
       if (settled) {
-        if (settled.bet.scope === "table" && settled.bet.staking !== "flat" && roomCount === "1") ledger.state.levels.global = settled.nextLevel;
+        if (settled.bet.scope === "table" && settled.bet.staking !== "flat" && activeSettings?.tableCount === "1") ledger.state.levels.global = settled.nextLevel;
         persist();
         log(`${settled.bet.tableId}\uFF5C${settled.bet.gameNo}\uFF5C\u7D50\u7B97 ${settled.pnl > 0 ? "+" : ""}${money(settled.pnl)}\uFF5C${settled.bet.staking === "flat" ? "\u5E73\u6CE8\uFF1A\u91D1\u984D\u56FA\u5B9A" : settled.pnl > 0 ? "\u8D0F\uFF1A\u91CD\u7F6E" : settled.pnl < 0 ? "\u8F38\uFF1A\u5347\u968E" : "\u548C\uFF0F\u9000\u6CE8\uFF1A\u7DAD\u6301"}\uFF5C\u4E0B\u4E00\u6CE8 ${money(stakeAmount(settled.bet.tableId))}`);
         reportUsageForBet(settled.bet.key);
@@ -17291,8 +17291,19 @@ ${DG_MOBILE_LAYOUT_CSS}
     q("provider").value = provider;
     const providerMenu = installDgProviderMenu(shadow, AI_PROVIDER_OPTIONS);
     const official = createDgOfficialTurnover(window, () => account, () => !busy);
-    function selectionLocked() {
-      return running || busy || ledger.pending().length > 0 || manualLedger.pending().length > 0;
+    function settingsEditable() {
+      return !running && !busy;
+    }
+    function executionBlocked() {
+      return ledger.pending().length > 0 || manualLedger.pending().length > 0;
+    }
+    function executionBlockReason() {
+      if (!executionBlocked()) return null;
+      const automatic = ledger.pending(), manual = manualLedger.pending(), mixed = manual.filter((b) => b.attributionUncertain).length;
+      if (mixed) return `\u6709 ${mixed} \u7B46\u540C\u5C40\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u6B78\u5C6C\u5F85\u6838\uFF1B\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u5F8C\u7E8C\u7D50\u7B97\u63A8\u7B97\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304`;
+      if (automatic.some((b) => b.state === "uncertain")) return "\u6709\u672A\u80FD\u6838\u5C0D\u7684\u81EA\u52D5\u4E0B\u6CE8\uFF0C\u4FDD\u6301\u505C\u6B62\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304";
+      if (manual.some((b) => b.state === "unknown")) return "\u6709\u672A\u80FD\u6838\u5C0D\u7684\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF0C\u4FDD\u6301\u505C\u6B62\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304";
+      return "\u4ECD\u6709\u5DF2\u9001\u51FA\u6216\u5F85\u7D50\u7B97\u4E0B\u6CE8\uFF1B\u53EF\u4EE5\u4FEE\u6539\u4E0B\u4E00\u6B21\u8A2D\u5B9A\uFF0C\u4F46\u9808\u7B49\u5F85\u6B63\u5F0F\u7D50\u7B97\u5F8C\u624D\u80FD\u958B\u59CB\uFF0C\u4E0D\u6E05\u9664\u5F85\u7D50\u7B97\u55AE";
     }
     function openForAuto(card) {
       const id = String(card.tableId), gameNo = String(card.gameInfo?.gameNo ?? "");
@@ -17315,9 +17326,9 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     function selectCount(value) {
       if (!["1", "3", "5", "all"].includes(value)) return;
-      if (selectionLocked()) {
+      if (!settingsEditable()) {
         q("count").value = q("parallel-count").value = roomCount;
-        log("\u5148\u505C\u6B62\u4E26\u7B49\u5DF2\u9001\u51FA\u4E0B\u6CE8\u7D50\u7B97\uFF0C\u624D\u80FD\u8B8A\u66F4\u540C\u6642\u684C\u6578");
+        log("\u57F7\u884C\u4E2D\u6216\u4E0A\u4E00\u6D41\u7A0B\u5C1A\u672A\u9000\u51FA\uFF0C\u4E0D\u80FD\u8B8A\u66F4\u540C\u6642\u684C\u6578");
         return;
       }
       roomCount = value;
@@ -17328,8 +17339,8 @@ ${DG_MOBILE_LAYOUT_CSS}
       scan();
     }
     function scan() {
-      if (selectionLocked()) {
-        log("\u5148\u505C\u6B62\u4E26\u7B49\u5DF2\u9001\u51FA\u4E0B\u6CE8\u7D50\u7B97\uFF0C\u624D\u80FD\u8B8A\u66F4\u684C\u53F0\u6216\u7B56\u7565");
+      if (!settingsEditable()) {
+        log("\u57F7\u884C\u4E2D\u6216\u4E0A\u4E00\u6D41\u7A0B\u5C1A\u672A\u9000\u51FA\uFF0C\u4E0D\u80FD\u8B8A\u66F4\u684C\u53F0\u6216\u7B56\u7565");
         return;
       }
       const cards = boards(), limit = roomCount === "all" ? cards.length : Number(roomCount);
@@ -17344,7 +17355,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         const button = document.createElement("button"), id = String(c.tableId);
         button.className = "room" + (selected.has(id) ? " active" : "");
         button.setAttribute("aria-pressed", String(selected.has(id)));
-        button.disabled = selectionLocked();
+        button.disabled = !settingsEditable();
         const title = document.createElement("span");
         title.className = "room-title";
         const name = document.createElement("strong");
@@ -17359,7 +17370,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         detail.textContent = selected.has(id) ? "\u5DF2\u9078\u64C7 \xB7 \u7368\u7ACB\u8A08\u7B97\u65B9\u5411" : "\u9EDE\u9078\u52A0\u5165\u4E0B\u6CE8\u7BC4\u570D";
         button.append(title, detail);
         button.onclick = () => {
-          if (selectionLocked()) return;
+          if (!settingsEditable()) return;
           if (selected.has(id)) {
             manualSelection = true;
             selected.delete(id);
@@ -17389,25 +17400,17 @@ ${DG_MOBILE_LAYOUT_CSS}
         log("\u4E0A\u4E00\u6D41\u7A0B\u5C1A\u672A\u9000\u51FA\uFF0C\u8ACB\u7A0D\u5019\u518D\u958B\u59CB");
         return;
       }
+      const blocked = executionBlockReason();
+      if (blocked) {
+        riskApproved = false;
+        log(blocked);
+        return;
+      }
       if (!riskApproved) {
         requestStart(testOnce);
         return;
       }
       riskApproved = false;
-      if (startMode === "fresh" && (ledger.pending().length || manualLedger.pending().length)) {
-        const mixed = manualLedger.pending().filter((b) => b.attributionUncertain).length;
-        log(mixed ? `\u6709 ${mixed} \u7B46\u540C\u5C40\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u6B78\u5C6C\u5F85\u6838\uFF1B\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u5F8C\u7E8C\u7D50\u7B97\u63A8\u7B97\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304` : "\u65B0\u958B\u59CB\u9808\u7B49\u5F85\u6240\u6709\u81EA\u52D5\u6216\u4EBA\u5DE5\u5F85\u6838\u4E0B\u6CE8\u7D50\u7B97\uFF1B\u4E0D\u6E05\u9664\u5F85\u7D50\u7B97\u55AE");
-        return;
-      }
-      if (ledger.pending().some((b) => b.state === "uncertain")) {
-        log("\u6709\u672A\u80FD\u6838\u5C0D\u7684\u4E0B\u6CE8\uFF0C\u4FDD\u6301\u505C\u6B62\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304");
-        return;
-      }
-      if (manualLedger.pending().some((b) => b.state === "unknown")) {
-        const mixed = manualLedger.pending().filter((b) => b.attributionUncertain).length;
-        log(mixed ? `\u6709 ${mixed} \u7B46\u540C\u5C40\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u6B78\u5C6C\u5F85\u6838\uFF1B\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u5F8C\u7E8C\u7D50\u7B97\u63A8\u7B97\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304` : "\u6709\u672A\u80FD\u6838\u5C0D\u7684\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF0C\u4FDD\u6301\u505C\u6B62\uFF1B\u8ACB\u5148\u67E5\u770B DG \u6B63\u5F0F\u4E0B\u6CE8\u7D00\u9304");
-        return;
-      }
       let durationMinutes;
       try {
         durationMinutes = parseDurationMinutes(q("duration-minutes").value);
@@ -17422,10 +17425,6 @@ ${DG_MOBILE_LAYOUT_CSS}
         log(e.message);
         return;
       }
-      if ((ledger.pending().length || manualLedger.pending().length) && (nextRisk.stopLoss !== riskLimits.stopLoss || nextRisk.takeProfit !== riskLimits.takeProfit)) {
-        log("\u5F85\u7D50\u7B97\u671F\u9593\u4E0D\u80FD\u6539\u6B62\u640D\uFF0F\u6B62\u76C8");
-        return;
-      }
       const martinError = validateMartingaleStopLoss(true);
       if (martinError) {
         showPage("settings");
@@ -17438,10 +17437,6 @@ ${DG_MOBILE_LAYOUT_CSS}
         return;
       }
       const nextBase = Number(q("base").value), nextScope = desiredScope(), nextProvider = q("provider").value;
-      if ((ledger.pending().length || manualLedger.pending().length) && (nextBase !== base || nextScope !== scope || nextProvider !== provider)) {
-        log("\u5F85\u7D50\u7B97\u671F\u9593\u4E0D\u80FD\u6539\u57FA\u672C\u91D1\u984D\u3001\u7B56\u7565\u6216\u5E33\u672C");
-        return;
-      }
       if (!Number.isSafeInteger(nextBase) || nextBase <= 0) {
         log("\u57FA\u672C\u55AE\u6CE8\u5FC5\u9808\u662F\u6B63\u6574\u6578");
         return;
@@ -17452,6 +17447,11 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
       const nextStaking = stakingMode();
       attach(nodes());
+      const restoredBlock = executionBlockReason();
+      if (restoredBlock) {
+        log(restoredBlock);
+        return;
+      }
       if (!boards().length) {
         log("\u5C1A\u672A\u8FA8\u8B58\u539F\u751F\u591A\u684C\u5361\u7247\uFF0C\u6C92\u6709\u958B\u59CB\uFF1B\u8ACB\u532F\u51FA DG \u9023\u7DDA\u8A3A\u65B7");
         return;
@@ -17462,10 +17462,6 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
       if (dgSceneWallet(walletPlayer) === null) {
         log("\u539F\u751F\u9918\u984D\u5C1A\u672A\u540C\u6B65\uFF0C\u6C92\u6709\u958B\u59CB");
-        return;
-      }
-      if ((ledger.pending().length || manualLedger.pending().length) && nextStaking !== stakingMode()) {
-        log("\u7B49\u5F85\u4E0B\u6CE8\u7D50\u7B97\u5F8C\u624D\u80FD\u8B8A\u66F4\u914D\u6CE8\u65B9\u5F0F");
         return;
       }
       if (roomCount === "1") singleStaking = nextStaking;
@@ -17481,10 +17477,6 @@ ${DG_MOBILE_LAYOUT_CSS}
       if (!selected.size) scan();
       if (!selected.size && manualSelection) {
         log("\u6307\u5B9A\u684C\u6A21\u5F0F\u5C1A\u672A\u9078\u684C\uFF1B\u5148\u9078\u684C\u6216\u5207\u56DE\u81EA\u52D5\u627E\u684C");
-        return;
-      }
-      if (roomCount !== "1" && ledger.pending().some((b) => b.scope === "global")) {
-        log("\u820A\u7248\u5171\u7528\u5E33\u672C\u4ECD\u6709\u5F85\u7D50\u7B97\u4E0B\u6CE8\uFF1B\u5148\u7B49\u6B63\u5F0F\u7D50\u7B97\u518D\u958B\u59CB\u540C\u6642\u591A\u684C");
         return;
       }
       if (startMode === "fresh") {
@@ -17552,7 +17544,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         }
       })();
       q("session-remaining").textContent = usage.started && usage.remainingMs !== null ? `\u5269\u9918 ${formatDuration(usage.remainingMs)}` : limit === null ? "\u6642\u9650\u683C\u5F0F\u932F\u8AA4" : limit ? `\u8A2D\u5B9A ${limit} \u5206\u9418` : "\u4E0D\u9650\u6642";
-      q("duration-minutes").disabled = selectionLocked();
+      q("duration-minutes").disabled = !settingsEditable();
       q("status").textContent = `${running ? "\u57F7\u884C\u4E2D" : "\u5DF2\u505C\u6B62"}\uFF5C${userStatus(status)}`;
       let heroText = userStatus(status);
       const eventSignature = logs.join("\n");
@@ -17570,7 +17562,7 @@ ${DG_MOBILE_LAYOUT_CSS}
           q("events").append(entry);
         }
       }
-      for (const button of q("rooms").querySelectorAll("button")) button.disabled = selectionLocked();
+      for (const button of q("rooms").querySelectorAll("button")) button.disabled = !settingsEditable();
       const cards = boards(), chosen = cards.filter((c) => selected.has(String(c.tableId))), pending = ledger.pending(), manualPending = manualLedger.pending();
       const tableNames = {};
       for (const c of [...contexts.values(), ...cards]) tableNames[String(c.tableId)] = c.gameInfo?.tableName || String(c.tableId);
@@ -17596,28 +17588,28 @@ ${DG_MOBILE_LAYOUT_CSS}
       q("balance").textContent = wallet === null ? "\u5F85\u540C\u6B65" : money(wallet);
       q("mini-balance").textContent = q("balance").textContent;
       q("mini-running").textContent = `${running ? selected.size ? "\u57F7\u884C\u4E2D" : "\u7B49\u5F85\u958B\u76E4" : pending.length || manualPending.length ? "\u5F85\u6838\u5C0D" : "\u5DF2\u505C\u6B62"} \xB7 ${mini ? selected.size + "\u684C" : manualSelection ? "\u6307\u5B9A\u684C" : "\u81EA\u52D5\u627E\u684C"}`;
-      q("auto-tables").disabled = selectionLocked();
+      q("auto-tables").disabled = !settingsEditable();
       q("auto-tables").classList.toggle("selected", !manualSelection);
       q("auto-tables").textContent = manualSelection ? "\u5207\u56DE\u81EA\u52D5\u627E\u684C" : "\u81EA\u52D5\u627E\u684C\u4E2D";
       q("selection-mode").textContent = manualSelection ? "\u6307\u5B9A\u684C\u53F0 \xB7 \u4E0D\u81EA\u52D5\u88DC\u5176\u4ED6\u684C" : "\u81EA\u52D5\u627E\u684C \xB7 \u958B\u653E\u4E0B\u6CE8\u5C31\u52A0\u5165";
       q("scope").options[0].textContent = stakingMode() === "flat" ? "\u5E73\u6CE8 \xB7 \u91D1\u984D\u56FA\u5B9A" : stakingMode() === "doubling" ? "\u55AE\u684C\u5171\u7528\u500D\u6295 \xB7 \u63DB\u623F\u63A5\u7E8C 1\u21922\u21924\u21928" : "\u55AE\u684C\u5171\u7528\u99AC\u4E01 \xB7 \u63DB\u623F\u63A5\u7E8C 1\u21923\u21927\u219215";
       q("doubling-reminder").hidden = stakingMode() !== "doubling";
       q("single-staking").value = stakingMode();
-      q("single-staking").disabled = selectionLocked();
+      q("single-staking").disabled = !settingsEditable();
       q("start-mode").value = startMode;
-      q("start-mode").disabled = selectionLocked();
+      q("start-mode").disabled = !settingsEditable();
       q("staking-hint").textContent = roomCount === "1" ? singleStaking === "flat" ? "\u55AE\u684C\u5E73\u6CE8\uFF1A\u6BCF\u7B46\u56FA\u5B9A\u57FA\u672C\u984D\uFF0C\u63DB\u623F\u4E0D\u52A0\u6CE8\u3002" : `\u8DE8\u623F\u9593\u63A5\u7E8C${singleStaking === "doubling" ? "\u500D\u62951\u21922\u21924\u21928" : "\u99AC\u4E011\u21923\u21927\u219215"}\uFF1A\u8F38\u5347\u968E\u3001\u8D0F\u91CD\u7F6E\u3001\u548C\u7DAD\u6301\u3002${startMode === "fresh" ? "\u65B0\u958B\u59CB\u9996\u7B46\u57FA\u672C\u984D\u3002" : "\u7E8C\u63A5\u4FDD\u7559\u5171\u7528\u968E\u7D1A\u3002"}` : "\u591A\u684C\u4F7F\u7528\u56FA\u5B9A\u5E73\u6CE8\uFF1B\u9078\u64C7\u99AC\u4E01\u6703\u81EA\u52D5\u5207\u6210 1 \u684C\u3002";
-      q("stop-loss").disabled = q("take-profit").disabled = q("base").disabled = q("cap").disabled = selectionLocked();
+      q("stop-loss").disabled = q("take-profit").disabled = q("base").disabled = q("cap").disabled = !settingsEditable();
       q("stop-loss").min = stakingMode() === "martingale" ? "2600" : "1";
       q("stop-loss").placeholder = stakingMode() === "martingale" ? "\u8ACB\u624B\u52D5\u8F38\u5165\uFF0C\u6700\u4F4E 2,600" : "\u672A\u8A2D\u5B9A";
       validateMartingaleStopLoss();
-      q("provider").disabled = q("provider-trigger").disabled = selectionLocked();
-      if (selectionLocked()) providerMenu.close();
+      q("provider").disabled = q("provider-trigger").disabled = !settingsEditable();
+      if (!settingsEditable()) providerMenu.close();
       q("run-pill").textContent = running ? "\u25CF \u81EA\u52D5\u4E0B\u6CE8\u4E2D" : pending.length || manualPending.length ? "\u25CF \u5F85\u6838\u5C0D" : "\u25CF \u5DF2\u505C\u6B62";
       q("run-pill").classList.toggle("idle", !running);
       q("method").textContent = `${stakingMode() === "flat" ? "\u5E73\u6CE8 \xB7 \u56FA\u5B9A\u91D1\u984D" : stakingMode() === "doubling" ? "\u55AE\u684C \xB7 \u500D\u6295\u6CD5" : "\u55AE\u684C \xB7 \u99AC\u4E01"}\uFF08${selected.size} \u684C\uFF09`;
       q("parallel-count").value = q("count").value = roomCount;
-      q("parallel-count").disabled = q("count").disabled = q("scan").disabled = selectionLocked();
+      q("parallel-count").disabled = q("count").disabled = q("scan").disabled = !settingsEditable();
       q("parallel-summary").textContent = `\u5DF2\u9078 ${selected.size} \u684C \xB7 \u81EA\u52D5\u5F85\u6838 ${pending.length}${manualPending.length ? ` \xB7 \u4EBA\u5DE5\u5F85\u6838 ${manualPending.length}` : ""}`;
       const rec = focus ? strategyFor(focus, previewProvider) : null;
       let focusTableText = focus ? focus.gameInfo.tableName || String(focus.tableId) : "\u5C0B\u627E\u53EF\u4E0B\u6CE8\u684C";
@@ -17777,12 +17769,18 @@ ${DG_MOBILE_LAYOUT_CSS}
     q("count").onchange = () => selectCount(q("count").value);
     q("parallel-count").onchange = () => selectCount(q("parallel-count").value);
     function requestStart(testOnce = false) {
-      if (!running && validateMartingaleStopLoss(true)) {
+      if (running || busy) return;
+      const blocked = executionBlockReason();
+      if (blocked) {
+        riskApproved = false;
+        log(blocked);
+        return;
+      }
+      if (validateMartingaleStopLoss(true)) {
         showPage("settings");
         q("stop-loss").focus();
         return;
       }
-      if (running || busy) return;
       riskApproved = false;
       riskTestOnce = testOnce;
       riskReturnFocus = shadow.activeElement;
@@ -17848,11 +17846,11 @@ ${DG_MOBILE_LAYOUT_CSS}
     q("edit-rooms").onclick = () => showRooms();
     function showRooms() {
       renderRooms();
-      q("rooms-hint").textContent = selectionLocked() ? "\u5F85\u4E0B\u6CE8\u5B8C\u6210\u7D50\u7B97\u5F8C\u624D\u80FD\u6539\u9078\u3002" : `\u76EE\u524D\u9078 ${selected.size} \u684C\uFF1B\u53D6\u6D88\u4E00\u684C\u5F8C\u53EF\u66F4\u63DB\u3002`;
+      q("rooms-hint").textContent = !settingsEditable() ? "\u57F7\u884C\u4E2D\u6216\u4E0A\u4E00\u6D41\u7A0B\u5C1A\u672A\u9000\u51FA\uFF0C\u4E0D\u80FD\u6539\u9078\u3002" : `\u76EE\u524D\u9078 ${selected.size} \u684C\uFF1B\u53D6\u6D88\u4E00\u684C\u5F8C\u53EF\u66F4\u63DB\u3002`;
       showPage("rooms");
     }
     q("auto-tables").onclick = () => {
-      if (selectionLocked()) return;
+      if (!settingsEditable()) return;
       manualSelection = false;
       selected.clear();
       scan();
@@ -17868,7 +17866,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
     };
     q("single-staking").onchange = () => {
-      if (selectionLocked()) {
+      if (!settingsEditable()) {
         q("single-staking").value = stakingMode();
         return;
       }
@@ -17917,7 +17915,7 @@ ${DG_MOBILE_LAYOUT_CSS}
     q("zoom-out").onclick = () => setMini(!mini);
     for (const id of ["base", "cap", "scope", "range-min", "range-max"]) q(id).oninput = render;
     q("start-mode").onchange = () => {
-      if (selectionLocked()) {
+      if (!settingsEditable()) {
         q("start-mode").value = startMode;
         return;
       }
@@ -17925,7 +17923,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       render();
     };
     q("provider").oninput = q("provider").onchange = () => {
-      if (selectionLocked()) {
+      if (!settingsEditable()) {
         q("provider").value = provider;
         providerMenu.sync();
         return;
