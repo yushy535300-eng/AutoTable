@@ -72,6 +72,10 @@ export function dgManualStake(bean: any): Stake | null {
  */
 export class DgManualLedger {
   state: DgManualLedgerState;
+  // A valid 1007 can precede its cmd 6 acknowledgement on the event queue. This
+  // transient evidence is never persisted: after reload it must be observed again
+  // rather than being treated as a locally manufactured settlement.
+  private stagedSettlements = new Map<string, { pnl: number; receivedAt: number }>();
   constructor(saved?: DgManualLedgerState) {
     const fallback: DgManualLedgerState = { version: 1, roundId: roundId(), bets: [] };
     if (!saved || saved.version !== 1 || typeof saved.roundId !== 'string' || !saved.roundId || !Array.isArray(saved.bets)) {
@@ -121,6 +125,7 @@ export class DgManualLedger {
   }
   /** A reload never discards a sent manual order. It remains an explicit unknown until a matching receipt proves it. */
   markReloadUnresolved() {
+    this.stagedSettlements.clear();
     for (const bet of this.state.bets) if (bet.state === 'sent') bet.state = 'unknown';
   }
   markUnresolved(bet: DgManualBet) {
@@ -135,6 +140,7 @@ export class DgManualLedger {
     if (existing) {
       // Without a unique native request id, equal amounts cannot prove retransmission.
       // Preserve a blocking unknown instead of understating a possible second wager.
+      this.stagedSettlements.delete(key);
       existing.state = 'unknown'; existing.attributionUncertain = true;
       return { bet: existing, created: false, duplicate: true, unknown: true };
     }
@@ -148,6 +154,7 @@ export class DgManualLedger {
   markAttributionUncertain(key: string) {
     const bet = this.state.bets.find(item => item.key === key);
     if (!bet) return null;
+    this.stagedSettlements.delete(key);
     bet.state = 'unknown'; bet.attributionUncertain = true;
     return bet;
   }
@@ -157,20 +164,42 @@ export class DgManualLedger {
     if (!tableId || !gameNo) return null;
     const bet = this.state.bets.find(item => item.key === `${tableId}:${gameNo}` && ['sent', 'unknown'].includes(item.state));
     if (!bet) return null;
-    if (bet.attributionUncertain || msg.codeId == null) { bet.state = 'unknown'; return { bet, accepted: false }; }
-    if (Number(msg.codeId) !== 0) { bet.state = 'rejected'; return { bet, accepted: false }; }
+    if (bet.attributionUncertain || msg.codeId == null) { this.stagedSettlements.delete(bet.key); bet.state = 'unknown'; return { bet, accepted: false }; }
+    if (Number(msg.codeId) !== 0) { this.stagedSettlements.delete(bet.key); bet.state = 'rejected'; return { bet, accepted: false }; }
     const stake = dgManualStake(msg);
-    if (!stake || (bet.amount !== null && (bet.amount !== stake.amount || bet.sendSignature !== stake.signature))) { bet.state = 'unknown'; return { bet, accepted: false }; }
+    if (!stake || (bet.amount !== null && (bet.amount !== stake.amount || bet.sendSignature !== stake.signature))) { this.stagedSettlements.delete(bet.key); bet.state = 'unknown'; return { bet, accepted: false }; }
     bet.amount = stake.amount; bet.side = stake.side; bet.sendSignature = stake.signature; bet.state = 'accepted'; bet.acceptedAt = Date.now();
+    const staged = this.stagedSettlements.get(bet.key);
+    if (staged) {
+      this.stagedSettlements.delete(bet.key);
+      bet.pnl = staged.pnl; bet.state = 'settled'; bet.settledAt = Date.now();
+      return { bet, accepted: true, settled: true, pnl: staged.pnl };
+    }
     return { bet, accepted: true };
   }
   settle(msg: any) {
     if (Number(msg?.cmd) !== 1007 || Number(msg.codeId ?? 0) !== 0) return null;
     const tableId = identifiers(msg?.tableId), gameNo = identifiers(msg?.gameNo), pnl = msg?.dList?.[1];
     if (!tableId || !gameNo || typeof pnl !== 'number' || !Number.isFinite(pnl)) return null;
-    const bet = this.state.bets.find(item => item.key === `${tableId}:${gameNo}` && item.state === 'accepted' && !item.attributionUncertain);
+    const key = `${tableId}:${gameNo}`;
+    const bet = this.state.bets.find(item => item.key === key && ['sent', 'accepted', 'unknown'].includes(item.state) && !item.attributionUncertain);
     if (!bet) return null;
-    bet.pnl = pnl; bet.state = 'settled'; bet.settledAt = Date.now();
-    return { bet, pnl };
+    if (bet.state === 'accepted') {
+      bet.pnl = pnl; bet.state = 'settled'; bet.settledAt = Date.now();
+      return { bet, pnl, settled: true };
+    }
+    // Before acceptance, only a parsed single outgoing command can be held for
+    // event reordering. Opaque or mismatched-receipt orders remain unknown and
+    // must never acquire P/L from an otherwise matching table-round event.
+    if (bet.state !== 'sent' || bet.amount === null) return null;
+    const staged = this.stagedSettlements.get(key);
+    if (staged && staged.pnl !== pnl) {
+      // Conflicting pre-acknowledgement events cannot be attributed safely.
+      this.stagedSettlements.delete(key);
+      bet.state = 'unknown'; bet.attributionUncertain = true;
+      return { bet, uncertain: true };
+    }
+    if (!staged) this.stagedSettlements.set(key, { pnl, receivedAt: Date.now() });
+    return { bet, staged: true };
   }
 }

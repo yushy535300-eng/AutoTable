@@ -1,5 +1,5 @@
 {
-  "version": "3.2.20-per-program-view-compact",
+  "version": "3.2.21-manual-settlement-summary",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -92,5 +92,7 @@
     "unknownAttribution": "blocked"
   },
   "onlineAccountLists": "per-program-member-page",
-  "onlineCountLayout": "compact-horizontal-with-view"
+  "onlineCountLayout": "compact-horizontal-with-view",
+  "manualSettlementRecovery": "single-order-receipt-gated-out-of-order",
+  "summaryMetrics": "combined-settled-pnl-wins-losses-zero-and-decisive-hit-rate"
 }

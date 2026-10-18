@@ -13,6 +13,7 @@ const send=(page,msg)=>page.evaluate(m=>window.__offlineMobile.socket.sendData(m
 const state=page=>page.evaluate(()=>window.__DG_SINGLEPAGE__.status());
 const automaticPackets=page=>page.evaluate(()=>window.__offlineMobile.sent.filter(m=>Number(m.cmd)===6&&m.type===1).length);
 const field=(page,id,value)=>page.evaluate(({id,value})=>{const n=document.querySelector('#__dg_singlepage_panel__').shadowRoot.getElementById(id);n.value=String(value);n.dispatchEvent(new Event('input',{bubbles:true}));},{id,value});
+const roundSummary=page=>page.evaluate(()=>{const root=document.querySelector('#__dg_singlepage_panel__').shadowRoot,panel=root.getElementById('panel').getBoundingClientRect();return {pnl:root.getElementById('round-pnl').textContent,wlt:root.getElementById('round-wlt').textContent,hit:root.getElementById('round-hit').textContent,size:{width:panel.width,height:panel.height}};});
 async function readyPage(browser,staking='flat',limits={loss:600,profit:200}){
  const page=await openOfflinePage(browser,[{id:701,method:'ei'}]);
  await configure(page,{count:'1',staking});
@@ -30,20 +31,54 @@ async function settleAuto(page,pnl){
 (async()=>{
  const browser=await playwright.chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
  try{
-  // A confirmed manual win contributes to take profit; duplicate settlement is inert.
+  // A valid 1007 can arrive before the documented cmd 6 acceptance shape. It
+  // remains non-P/L evidence until that exact acceptance arrives; auto handling
+  // runs first in the same listener and must not consume this manual result.
   let page=await readyPage(browser,'martingale');
   try{
    await approveAndStart(page);await settleAuto(page,100);
    const levelsBefore=await page.evaluate(()=>window.__DG_SINGLEPAGE__.exportLedger().levels);
    await send(page,sent('manual-profit'));assert.equal((await state(page)).roundPnl,100);
-   await emit(page,settle('manual-profit',100));assert.equal((await state(page)).roundPnl,100,'unaccepted manual settlement is not inferred');
-   await emit(page,receipt('manual-profit'));assert.equal((await state(page)).roundPnl,100);
    await emit(page,settle('manual-profit',100));
-   let s=await state(page);assert.equal(s.roundPnl,200);assert.deepEqual(s.roundPnlBreakdown,{automatic:100,manual:100});assert.equal(s.running,false);assert(s.status.includes('止盈'));
+   let s=await state(page);assert.equal(s.roundPnl,100,'1007 before cmd 6 acknowledgement does not immediately fabricate manual P/L');assert.equal(s.manualPending[0].state,'sent');
+   await emit(page,receipt('manual-profit'));
+   s=await state(page);assert.equal(s.roundPnl,200);assert.deepEqual(s.roundPnlBreakdown,{automatic:100,manual:100});assert.equal(s.manualPending.length,0);assert.equal(s.running,false);assert(s.status.includes('止盈'));
    assert.deepEqual(await page.evaluate(()=>window.__DG_SINGLEPAGE__.exportLedger().levels),levelsBefore,'manual independent wager cannot alter martingale levels');
    await emit(page,settle('manual-profit',100));assert.equal((await state(page)).roundPnl,200);
    const before=await automaticPackets(page);await page.evaluate(()=>window.__offlineMobile.cards.forEach(c=>c.gameInfo.gameNo+='-new'));await sleep(650);assert.equal(await automaticPackets(page),before,'combined target stops all new automatic submissions');
    const usages=await page.evaluate(()=>window.__DG_SINGLEPAGE__.usageHistory());assert.equal(usages[0].pnl,100,'tool-only usage is not inflated by manual P/L');
+  }finally{await stopAndClose(page)}
+  // A single confirmed manual wager clears its own lock after real settlement;
+  // the following auto round can start normally.
+  page=await readyPage(browser,'flat',{loss:600,profit:2000});
+  try{
+   await send(page,sent('manual-normal',100,701));await emit(page,receipt('manual-normal',100,701));await emit(page,settle('manual-normal',95,701));
+   let s=await state(page);assert.equal(s.roundPnl,95);assert.equal(s.manualPending.length,0,'one confirmed manual wager is no longer pending after 1007');
+   await approveAndStart(page);await sleep(650);
+   s=await state(page);assert.equal(s.running,true);assert.equal(await automaticPackets(page),1,'after the normal manual settlement, a new automatic round is permitted');
+  }finally{await stopAndClose(page)}
+  // A different table/round manual wager is allowed while auto is running. Its
+  // verified result is included in the combined risk P/L, but does not stop a
+  // run that has not reached a configured target.
+  page=await readyPage(browser,'flat',{loss:600,profit:2000});
+  try{
+   await approveAndStart(page);await send(page,sent('manual-live',100,799));await emit(page,receipt('manual-live',100,799));await emit(page,settle('manual-live',95,799));
+   const s=await state(page);assert.equal(s.running,true);assert.deepEqual(s.roundPnlBreakdown,{automatic:0,manual:95});assert.equal(s.roundPnl,95);assert.equal(s.manualPending.length,0);
+   assert.equal(await automaticPackets(page),1,'normal manual input during auto neither blocks nor resubmits the existing automatic order');
+  }finally{await stopAndClose(page)}
+  // Stopping auto never detaches the passive native observer: a later manual
+  // round still updates the same risk total, without restarting its timer/run.
+  page=await readyPage(browser,'flat',{loss:600,profit:2000});
+  try{
+   await approveAndStart(page);await page.evaluate(()=>window.__DG_SINGLEPAGE__.stop());
+   const stopped=await state(page);assert.equal(stopped.running,false);assert.equal(stopped.usage.running,false);
+   const beforeSummary=await roundSummary(page);
+   await send(page,sent('manual-after-stop-win',100,799));await emit(page,receipt('manual-after-stop-win',100,799));await emit(page,settle('manual-after-stop-win',95,799));
+   await send(page,sent('manual-after-stop-loss',100,799));await emit(page,receipt('manual-after-stop-loss',100,799));await emit(page,settle('manual-after-stop-loss',-95,799));
+   await send(page,sent('manual-after-stop-zero',100,799));await emit(page,receipt('manual-after-stop-zero',100,799));await emit(page,settle('manual-after-stop-zero',0,799));
+   const s=await state(page);assert.equal(s.running,false);assert.equal(s.usage.running,false);assert.equal(s.usage.started,stopped.usage.started);assert.equal(s.usage.elapsedMs,stopped.usage.elapsedMs,'manual settlement after stop does not restart or extend the automatic timer');
+   assert.deepEqual(s.roundPnlBreakdown,{automatic:0,manual:0});assert.equal(s.roundPnl,0);assert.equal(s.manualPending.length,0);
+   const summary=await roundSummary(page);assert.deepEqual(summary,{pnl:'0',wlt:'1／1／1',hit:'50%',size:beforeSummary.size},'stopped manual-only verified win/loss/zero P/L results share the combined summary without resizing it');
   }finally{await stopAndClose(page)}
   // A manual loss after stopping still fills the original round, and a fresh start clears totals only after no pending remains.
   page=await readyPage(browser,'flat',{loss:300,profit:2000});
@@ -84,6 +119,17 @@ async function settleAuto(page,pnl){
    assert.equal((await state(page)).running,false,'equal amount but wrong side stops immediately');
    await emit(page,settle('manual-mismatch',100));assert.equal((await state(page)).roundPnl,0);
   }finally{await stopAndClose(page)}
+  // A second manual cmd 6 for the same table/game has no unique native request
+  // id. It remains a stopped attribution lock even if later receipts/1007s arrive.
+  page=await readyPage(browser);
+  try{
+   await page.evaluate(()=>window.__offlineMobile.cards[0].gameInfo.gameNo='manual-double');
+   await send(page,sent('manual-double',100,701));await send(page,sent('manual-double',100,701));
+   await emit(page,receipt('manual-double',100,701));await emit(page,settle('manual-double',100,701));
+   let s=await state(page);assert.equal(s.roundPnl,0);assert.equal(s.manualPending.length,1);assert.equal(s.manualPending[0].attributionUncertain,true);
+   assert((await page.evaluate(()=>window.__DG_SINGLEPAGE__.rounds()[0].label)).includes('歸屬待核'),'mixed same-game state is labelled attribution pending, not settlement pending');
+   await approveAndStart(page);s=await state(page);assert.equal(s.running,false);assert(s.status.includes('歸屬待核'),'mixed attribution cannot resume automation from a later 1007');
+  }finally{await stopAndClose(page)}
   // Reinstall retains stopped source round; account changes cannot inherit that manual sum.
   page=await readyPage(browser);
   try{
@@ -103,6 +149,6 @@ async function settleAuto(page,pnl){
    });
    await approveAndStart(page);await sleep(650);assert.equal((await state(page)).running,false);assert.equal((await state(page)).roundPnl,95);assert.equal(await automaticPackets(page),1,'manual threshold cancels remaining two native submissions in the same batch');
   }finally{await stopAndClose(page)}
-  console.log('PASS: manual accepted/settled-only + duplicate, combined take-profit/stop-loss, stopped late settlement, pending exposure, unknown/fresh lock, tool usage separation, martingale levels, reload/account isolation. Offline-only.');
+  console.log('PASS: ordered and out-of-order manual settlement, live/post-stop manual P/L, combined risk limits, pending exposure, unknown lock, tool usage separation, martingale isolation, reload/account isolation. Offline-only.');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

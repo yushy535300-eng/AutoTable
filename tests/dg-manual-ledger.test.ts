@@ -20,6 +20,24 @@ describe('DG 人工原生下注觀察帳本', () => {
     expect(ledger.roundPnl()).toBe(-100);
   });
 
+  it('1007 先到只暫存於記憶體；相符 cmd 6 接受後才結算，重載不採用暫存值', () => {
+    const ledger = new DgManualLedger();
+    ledger.observeSent(sent('out-of-order'));
+    expect(ledger.settle(settled('out-of-order', 95))).toMatchObject({ staged: true });
+    expect(ledger.roundPnl()).toBe(0);
+    expect(ledger.receipt(accepted('out-of-order'))).toMatchObject({ accepted: true, settled: true, pnl: 95 });
+    expect(ledger.roundPnl()).toBe(95);
+
+    const reloaded = new DgManualLedger();
+    reloaded.observeSent(sent('reload-before-receipt'));
+    reloaded.settle(settled('reload-before-receipt', 95));
+    const restored = new DgManualLedger(reloaded.snapshot());
+    restored.markReloadUnresolved();
+    expect(restored.receipt(accepted('reload-before-receipt'))).toMatchObject({ accepted: true });
+    expect(restored.state.bets[0]).toMatchObject({ state: 'accepted' });
+    expect(restored.roundPnl()).toBe(0);
+  });
+
   it('原生送出重複封包去重；同局不同封包改為未知，絕不拆算損益', () => {
     const ledger = new DgManualLedger();
     ledger.observeSent(sent('same'));
@@ -72,3 +90,5 @@ describe('DG 人工原生下注觀察帳本', () => {
  it('same amount on a different side is not a matching acceptance',()=>{const ledger=new DgManualLedger();ledger.observeSent(sent());expect(ledger.receipt(accepted('r1',{player:100}))).toMatchObject({accepted:false});expect(ledger.settle(settled())).toBeNull();});
 
  it('known amount with an unmatched receipt becomes unknown exposure, not an assumed known reserve',()=>{const ledger=new DgManualLedger();ledger.observeSent(sent());ledger.receipt(accepted('r1',{player:100}));expect(ledger.riskExposure()).toEqual({known:[],unknownCount:1});});
+
+ it('不符接受回覆清除早到結算；後來接受需新的正式結算',()=>{const ledger=new DgManualLedger();ledger.observeSent(sent());ledger.settle(settled('r1',95));expect(ledger.receipt(accepted('r1',{player:100}))).toMatchObject({accepted:false});expect(ledger.receipt(accepted())).toMatchObject({accepted:true});expect(ledger.roundPnl()).toBe(0);expect(ledger.pending()).toHaveLength(1);expect(ledger.settle(settled('r1',95))).toMatchObject({pnl:95});expect(ledger.roundPnl()).toBe(95);});
