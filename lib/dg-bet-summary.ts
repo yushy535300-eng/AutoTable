@@ -7,17 +7,17 @@ export function dgBetSummary(bets: DgBet[], names: Record<string, string>, since
   const waiting = bets.filter(b => b.state === 'accepted' && !b.attributionUncertain);
   const confirming = bets.filter(b => b.state === 'reserved' || b.state === 'submitted');
   const uncertain = bets.filter(b => b.state === 'uncertain' || b.attributionUncertain);
-  let latest: DgBet | undefined;
+  const latest = new Map<string, DgBet>();
   for (const bet of bets) {
     if (bet.attributionUncertain || !['accepted', 'settled'].includes(bet.state) || bet.acceptedAt === undefined) continue;
     if (bet.state !== 'accepted' && bet.acceptedAt < since) continue;
-    // Ties use the later ledger entry, so multi-table receipts never concatenate.
-    if (!latest || bet.acceptedAt >= latest.acceptedAt!) latest = bet;
+    const previous = latest.get(bet.tableId);
+    if (!previous || bet.acceptedAt >= previous.acceptedAt!) latest.set(bet.tableId, bet);
   }
   return {
     waiting: uniqueNames(waiting),
     confirming: uniqueNames(confirming),
     uncertain: uniqueNames(uncertain),
-    success: latest ? `${name(latest)}｜${latest.amount.toLocaleString('zh-TW')}` : '',
+    success: [...latest.values()].map(b => `${name(b)}${b.side}${b.amount.toLocaleString('zh-TW')}`).join(' · '),
   };
 }
