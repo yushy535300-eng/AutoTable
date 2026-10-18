@@ -611,7 +611,8 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     for(const c of [...contexts.values(),...cards])tableNames[String(c.tableId)]=c.gameInfo?.tableName||String(c.tableId);
     const summaries=dgBetSummary(ledger.state.bets,tableNames,summarySince);
     const normalStatus=/平台已接受下注|結算 |已直接傳送|自動找桌|同時 \d+|找到 |新開始/.test(status);
-    if(summaries.success&&normalStatus)heroText='下注成功：'+summaries.success;
+    if(summaries.confirming&&/已直接傳送/.test(status))heroText='待確認：'+summaries.confirming;
+    else if(summaries.success&&normalStatus)heroText='下注成功：'+summaries.success;
     else if(summaries.confirming&&normalStatus)heroText='待確認：'+summaries.confirming;
     if(q('hero-status').textContent!==heroText)q('hero-status').textContent=heroText;
     q('hero-status').title=heroText;
@@ -633,9 +634,9 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     q('selection-mode').textContent=manualSelection?'指定桌台 · 不自動補其他桌':'自動找桌 · 開放下注就加入';
     q('scope').options[0].textContent=stakingMode()==='flat'?'平注 · 金額固定':stakingMode()==='doubling'?'單桌共用倍投 · 換房接續 1→2→4→8':'單桌共用馬丁 · 換房接續 1→3→7→15';
     q('doubling-reminder').hidden=stakingMode()!=='doubling';
-    q('single-staking').value=stakingMode();q('single-staking').disabled=roomCount!=='1'||selectionLocked();
+    q('single-staking').value=stakingMode();q('single-staking').disabled=selectionLocked();
     q('start-mode').value=startMode;q('start-mode').disabled=selectionLocked();
-    q('staking-hint').textContent=roomCount==='1'?(singleStaking==='flat'?'單桌平注：每筆固定基本額，換房不加注。':`跨房間接續${singleStaking==='doubling'?'倍投1→2→4→8':'馬丁1→3→7→15'}：輸升階、贏重置、和維持。${startMode==='fresh'?'新開始首筆基本額。':'續接保留共用階級。'}`):'多桌固定平注，不可更改。';
+    q('staking-hint').textContent=roomCount==='1'?(singleStaking==='flat'?'單桌平注：每筆固定基本額，換房不加注。':`跨房間接續${singleStaking==='doubling'?'倍投1→2→4→8':'馬丁1→3→7→15'}：輸升階、贏重置、和維持。${startMode==='fresh'?'新開始首筆基本額。':'續接保留共用階級。'}`):'多桌使用固定平注；選擇馬丁會自動切成 1 桌。';
     q('stop-loss').disabled=q('take-profit').disabled=q('base').disabled=q('cap').disabled=selectionLocked();
     q('stop-loss').min=stakingMode()==='martingale'?'2600':'1';
     q('stop-loss').placeholder=stakingMode()==='martingale'?'請手動輸入，最低 2,600':'未設定';
@@ -787,9 +788,15 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   q('choose-tables').onclick=showRooms;q('rooms-back').onclick=()=>showPage('overview');
   q('hero-status').onclick=()=>showPage('logs');q('hero-status').onkeydown=(e:KeyboardEvent)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();showPage('logs');}};
   q('single-staking').onchange=()=>{
-    if(roomCount!=='1'||selectionLocked()){q('single-staking').value=stakingMode();return;}
-    const value=q('single-staking').value;if(value!=='flat'&&value!=='martingale'&&value!=='doubling')return;
-    singleStaking=value;scope=desiredScope();syncRiskInputMode();render();
+    if(selectionLocked()){q('single-staking').value=stakingMode();return;}
+    const value=q('single-staking').value;
+    if(value!=='flat'&&value!=='martingale'&&value!=='doubling'){q('single-staking').value=stakingMode();return;}
+    singleStaking=value;
+    // Non-flat progression is single-table only. Reuse the normal count change
+    // to shrink selected rooms and preserve independent risk-input drafts.
+    if(value!=='flat'&&roomCount!=='1')selectCount('1');
+    else {scope=desiredScope();syncRiskInputMode();}
+    render();
   };
   function setZoom(value:number){userZoom=Math.max(.7,Math.min(1.8,value));q('zoom').value=String(Math.round(userZoom*100));fitPanel();}
   q('stop-loss').oninput=()=>validateMartingaleStopLoss();

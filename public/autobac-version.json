@@ -1,5 +1,5 @@
 {
-  "version": "3.2.21-manual-settlement-summary",
+  "version": "3.2.22-martingale-switch-single-table",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -94,5 +94,7 @@
   "onlineAccountLists": "per-program-member-page",
   "onlineCountLayout": "compact-horizontal-with-view",
   "manualSettlementRecovery": "single-order-receipt-gated-out-of-order",
-  "summaryMetrics": "combined-settled-pnl-wins-losses-zero-and-decisive-hit-rate"
+  "summaryMetrics": "combined-settled-pnl-wins-losses-zero-and-decisive-hit-rate",
+  "stakingSelection": "idle-multitable-selectable; nonflat-forces-single; pending-running-lock",
+  "successSummary": "latest-confirmed-table-amount-only; no-stale-success-for-new-submission"
 }
