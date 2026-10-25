@@ -14127,8 +14127,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
     if (!data || typeof data.player !== "string" || typeof data.banker !== "string") return null;
     const parse3 = (s) => {
-      const values = s.split("-");
-      if (values.length > 3 || values.some((v) => !v.trim())) return null;
+      if (s.length > 80) return null;
+      const values = s.split("-").map((v) => v.trim());
+      if (values.length > 3 || values.some((v) => !v)) return null;
+      if (values.length === 3 && values[2] === "0") values.pop();
       const ranks = values.map(cardRank);
       return ranks.every((r) => r !== null) ? ranks : null;
     };
@@ -14153,8 +14155,31 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     if (bankers === 2) return { ok: false, reason: reason + "\uFF1B\u540C\u7968\u89C0\u671B\uFF0C\u4E0D\u4E0B\u6CE8" };
     return { ok: true, side: bankers > 2 ? "\u838A" : "\u9592", confidence: Math.max(bankers, 4 - bankers) * 25, reason };
   }
-  function createDgPokerTracker() {
-    const snapshots = /* @__PURE__ */ new Map();
+  var DG_CARD_MEMORY_COMPACT_MS = 20 * 6e4;
+  function createDgPokerTracker(now = () => Date.now()) {
+    const snapshots = /* @__PURE__ */ new Map(), nativeCurrent = /* @__PURE__ */ new Map();
+    const history = /* @__PURE__ */ new Map(), retiredShoes = /* @__PURE__ */ new Map();
+    let compactedAt = now();
+    const nativeNumber = (value, min = 0) => {
+      if (value == null || value === "" || typeof value === "boolean") return null;
+      const n = Number(value);
+      return Number.isSafeInteger(n) && n >= min ? n : null;
+    };
+    function compactIfDue() {
+      const time3 = now();
+      if (time3 - compactedAt < DG_CARD_MEMORY_COMPACT_MS) return false;
+      history.clear();
+      for (const [id, last] of snapshots) history.set(id, [last]);
+      compactedAt = time3;
+      return true;
+    }
+    function resetFeed() {
+      snapshots.clear();
+      nativeCurrent.clear();
+      history.clear();
+      retiredShoes.clear();
+      compactedAt = now();
+    }
     function record2(id, shoe, round, hand) {
       const previous = snapshots.get(id), fingerprint = JSON.stringify(hand);
       if (previous && previous.shoe === shoe && round < previous.round) return;
@@ -14162,42 +14187,97 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         if (previous.fingerprint !== fingerprint) previous.conflict = true;
         return;
       }
-      snapshots.set(id, { shoe, round, hand, fingerprint, conflict: false });
+      const next = { shoe, round, hand, fingerprint, conflict: false };
+      snapshots.set(id, next);
+      const list = history.get(id) ?? [];
+      list.push(next);
+      if (list.length > 128) list.shift();
+      history.set(id, list);
     }
     function observe(cards) {
+      compactIfDue();
       for (const card of cards) {
-        const id = String(card.tableId || ""), g = card.gameInfo || {}, shoe = g.shoeId == null ? "" : String(g.shoeId), round = Number(g.playId), state = Number(g.stateId);
-        if (!id || !shoe || !Number.isSafeInteger(round) || round < 1) continue;
+        const id = String(card.tableId || ""), g = card.gameInfo || {}, shoe = g.shoeId == null ? "" : String(g.shoeId), round = nativeNumber(g.playId, 1), state = Number(g.stateId);
+        if (!id || !shoe || round === null) continue;
+        const native = nativeCurrent.get(id);
+        if (native && native.shoe !== shoe) continue;
         const old = snapshots.get(id);
-        if (old && old.shoe !== shoe) snapshots.delete(id);
+        if (old && old.shoe !== shoe) {
+          snapshots.delete(id);
+          history.delete(id);
+        }
         if (!Number.isFinite(state) || state === 1) continue;
         const hand = dgPokerHand(g.poker);
         if (hand) record2(id, shoe, round, hand);
       }
     }
-    function observePacket(packet, cards) {
+    function observePacket(packet, cards = []) {
+      compactIfDue();
       if (!Array.isArray(packet?.table) || Number(packet.codeId ?? 0) !== 0) return;
-      for (const raw of packet.table.slice(0, 256)) {
-        if (!raw || raw.tableId == null || raw.shoeId == null || raw.playId == null || raw.poker == null) continue;
-        const id = String(raw.tableId), shoe = String(raw.shoeId), round = Number(raw.playId);
-        if (!id || !shoe || !Number.isSafeInteger(round) || round < 1) continue;
-        const card = cards.find((c) => String(c?.tableId) === id && String(c?.gameInfo?.shoeId ?? "") === shoe);
-        if (!card) continue;
-        const current = Number(card.gameInfo.playId), state = Number(card.gameInfo.stateId);
-        if (!Number.isSafeInteger(current) || !(round === current - 1 || round === current && Number.isFinite(state) && state !== 1)) continue;
+      const rows = packet.table.slice(0, 768);
+      for (const raw of rows) {
+        const table = nativeNumber(raw?.tableId, 1), round = nativeNumber(raw?.playId, 1), shoe = nativeNumber(raw?.shoeId);
+        if (table === null || round === null || shoe === null) continue;
+        const id = String(table), shoeKey = String(shoe), old = nativeCurrent.get(id);
+        const scene = cards.find((c) => String(c?.tableId) === id);
+        if (scene) {
+          const g = scene.gameInfo ?? {}, current = nativeNumber(g.playId, 1);
+          if (g.shoeId != null && String(g.shoeId) !== shoeKey) continue;
+          if (current !== null && round !== current && round !== current - 1) continue;
+        }
+        if (old && old.shoe !== shoeKey) {
+          const retired = retiredShoes.get(id) ?? /* @__PURE__ */ new Set();
+          if (retired.has(shoeKey)) continue;
+          retired.add(old.shoe);
+          retiredShoes.set(id, retired);
+          snapshots.delete(id);
+          history.delete(id);
+        } else if (old && round < old.round) {
+          if (shoeKey === "0" && round === 1 && Number(raw.state) === 1) {
+            snapshots.delete(id);
+            history.delete(id);
+          } else continue;
+        }
+        if (nativeCurrent.size >= 256 && !nativeCurrent.has(id)) continue;
+        nativeCurrent.set(id, { shoe: shoeKey, round });
+      }
+      for (const raw of rows) {
+        const table = nativeNumber(raw?.tableId, 1), round = nativeNumber(raw?.playId, 1);
+        if (table === null || round === null || raw?.poker == null) continue;
+        const id = String(table), meta3 = nativeCurrent.get(id), explicit = nativeNumber(raw.shoeId);
+        const shoe = explicit !== null ? String(explicit) : meta3?.round === round ? meta3.shoe : null;
+        if (shoe === null || !meta3 || meta3.shoe !== shoe || meta3.round < round) continue;
+        const card = cards.find((c) => String(c?.tableId) === id);
+        if (card) {
+          const g = card.gameInfo ?? {}, current = nativeNumber(g.playId, 1), state = Number(g.stateId);
+          if (g.shoeId != null && String(g.shoeId) !== shoe) continue;
+          if (current === null || !(round === current - 1 || round === current && Number.isFinite(state) && state !== 1)) continue;
+        } else if (Number(raw.state) === 1) continue;
         const hand = dgPokerHand(raw.poker);
         if (hand) record2(id, shoe, round, hand);
       }
     }
+    function identity(card) {
+      const g = card?.gameInfo ?? {}, id = String(card?.tableId ?? ""), round = nativeNumber(g.playId, 1);
+      if (round === null) return null;
+      if (g.shoeId != null) return { shoe: String(g.shoeId), round };
+      const meta3 = nativeCurrent.get(id);
+      return meta3 && meta3.round === round ? { shoe: meta3.shoe, round } : null;
+    }
     function decision(card, strategy) {
-      const g = card?.gameInfo || {}, old = snapshots.get(String(card?.tableId || ""));
+      compactIfDue();
+      const old = snapshots.get(String(card?.tableId || "")), current = identity(card);
       if (!old) return { ok: false, reason: "\u7B49\u5F85\u6B64\u684C\u4E0A\u4E00\u5C40\u5B8C\u6574\u724C\u5F35\uFF0F\u958B\u724C\u63A8\u9001\uFF1B\u5C1A\u672A\u53D6\u5F97\u53EF\u6838\u5C0D\u8CC7\u6599" };
       if (old.conflict) return { ok: false, reason: "\u6B64\u684C\u540C\u9774\u540C\u5C40\u724C\u5F35\u8CC7\u6599\u885D\u7A81\uFF0C\u66AB\u4E0D\u4E0B\u6CE8" };
-      if (old.shoe !== String(g.shoeId ?? "")) return { ok: false, reason: "\u6B64\u684C\u5DF2\u63DB\u9774\uFF0C\u7B49\u5F85\u65B0\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u724C\u5F35" };
-      if (old.round !== Number(g.playId) - 1) return { ok: false, reason: "\u6B64\u684C\u724C\u5F35\u5C40\u865F\u4E0D\u662F\u7576\u524D\u4E0A\u4E00\u5C40\uFF0C\u7B49\u5F85\u76F8\u7B26\u958B\u724C\u8CC7\u6599" };
+      if (!current) return { ok: false, reason: "\u7B49\u5F85\u6B64\u684C\u7576\u524D\u9774\u865F\uFF0F\u5C40\u865F\u7684\u539F\u751F\u7D81\u5B9A\uFF0C\u4E0D\u501F\u7528\u5176\u4ED6\u684C\u6216\u820A\u5C40\u8CC7\u6599" };
+      if (old.shoe !== current.shoe) return { ok: false, reason: "\u6B64\u684C\u5DF2\u63DB\u9774\uFF0C\u7B49\u5F85\u65B0\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u724C\u5F35" };
+      if (old.round !== current.round - 1) return { ok: false, reason: "\u6B64\u684C\u724C\u5F35\u5C40\u865F\u4E0D\u662F\u7576\u524D\u4E0A\u4E00\u5C40\uFF0C\u7B49\u5F85\u76F8\u7B26\u958B\u724C\u8CC7\u6599" };
       return pokerDecision(strategy, old.hand);
     }
-    return { observe, observePacket, decision };
+    function memoryView() {
+      return { tableCount: snapshots.size, historyCount: [...history.values()].reduce((n, list) => n + list.length, 0), compactEveryMs: DG_CARD_MEMORY_COMPACT_MS, compactedAt, retainsLastHand: true };
+    }
+    return { observe, observePacket, decision, identity, compactIfDue, resetFeed, memoryView };
   }
 
   // lib/dg-bet-ledger.ts
@@ -16635,6 +16715,29 @@ ${DG_MOBILE_LAYOUT_CSS}
     const ledger = new DgBetLedger();
     const manualLedger = new DgManualLedger();
     const pokerTracker = createDgPokerTracker();
+    let cardFeed = null;
+    let cleanupCardFeed = () => {
+    };
+    function bindCardFeed() {
+      const feed = window.__AUTOBAC_DG_CARD_FEED__;
+      if (feed === cardFeed) return;
+      cleanupCardFeed();
+      cleanupCardFeed = () => {
+      };
+      cardFeed = feed;
+      if (typeof feed?.subscribe !== "function") return;
+      cleanupCardFeed = feed.subscribe((packet) => {
+        if (disposed) return;
+        pokerTracker.observePacket(packet);
+        queueMicrotask(() => {
+          if (!disposed) {
+            pokerTracker.observe(boards());
+            render();
+            if (running) void tick();
+          }
+        });
+      });
+    }
     const sessionTimer = createDgSessionTimer();
     const usageHistory = createDgUsageHistory();
     let running = false, busy = false, disposed = false, epoch = 0, once = false;
@@ -16920,6 +17023,8 @@ ${DG_MOBILE_LAYOUT_CSS}
       walletPlayer = p;
       if (!p?.socketMan?.on || !p?.socketMan?.off) return;
       if (account && p !== account) {
+        pokerTracker.resetFeed();
+        cleanupCardFeed();
         stop("DG \u5DE5\u4F5C\u968E\u6BB5\u6539\u8B8A\uFF0C\u8ACB\u91CD\u65B0\u8F09\u5165\u8173\u672C");
         return;
       }
@@ -17220,6 +17325,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       const manualRisk = manualRiskBlockReason();
       if (running && manualRisk) stop(manualRisk);
       if (running && roomCount === "1" && scope === "global" && stakeAmount("global") > maxStake) stop(`\u4E0B\u4E00\u6CE8 ${money(stakeAmount("global"))} \u8D85\u904E\u55AE\u7B46\u4E0A\u9650 ${money(maxStake)}\uFF1B\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8`);
+      bindCardFeed();
       const all = nodes();
       pokerTracker.observe(boards(all));
       attach(all);
@@ -17657,7 +17763,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       const seconds = focus ? Math.floor(remaining(focus)) : null;
       q("countdown").textContent = seconds !== null ? String(seconds) : "\u2014";
       q("ring").style.setProperty("--progress", `${seconds !== null ? Math.min(1, seconds / Math.max(1, Number(focus.gameInfo.countDown))) * 360 : 0}deg`);
-      q("focus-meta").textContent = focus ? `\u9774 ${focus.gameInfo.shoeId ?? "\u2014"} \xB7 \u5C40 ${focus.gameInfo.playId ?? "\u2014"} \xB7 ${getPatternInfo(roads(focus)).label} \xB7 ${strategyLabel}` : `${strategyLabel} \xB7 \u7B49\u5019\u724C\u8DEF\u8207\u5012\u6578`;
+      q("focus-meta").textContent = focus ? `\u9774 ${pokerTracker.identity(focus)?.shoe ?? "\u2014"} \xB7 \u5C40 ${focus.gameInfo.playId ?? "\u2014"} \xB7 ${getPatternInfo(roads(focus)).label} \xB7 ${strategyLabel}` : `${strategyLabel} \xB7 \u7B49\u5019\u724C\u8DEF\u8207\u5012\u6578`;
       if (rec?.reason && !currentBet) q("focus-meta").textContent += " \xB7 " + rec.reason;
       if (currentBet) {
         const original = AI_PROVIDER_OPTIONS.find((x) => x.key === currentBet.provider)?.label;
@@ -17753,7 +17859,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         const title = document.createElement("strong");
         title.textContent = c.gameInfo.tableName || String(c.tableId);
         const meta3 = document.createElement("small");
-        meta3.textContent = `\u9774 ${c.gameInfo.shoeId ?? "\u2014"} \xB7 \u5C40 ${c.gameInfo.playId ?? "\u2014"} \xB7 ${getPatternInfo(results).label}`;
+        meta3.textContent = `\u9774 ${pokerTracker.identity(c)?.shoe ?? "\u2014"} \xB7 \u5C40 ${c.gameInfo.playId ?? "\u2014"} \xB7 ${getPatternInfo(results).label}`;
         info.append(title, meta3);
         const amount2 = document.createElement("div");
         amount2.className = "table-rec";
@@ -18190,6 +18296,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       stakeDiagnostics,
       officialTurnover: official.view,
       refreshOfficialTurnover: () => official.refresh(true),
+      cardMemory: () => pokerTracker.memoryView(),
       mobileDiagnostics: () => inspectDgMobileNativeSurface(window),
       runtimeDiagnostics: () => describeDgScene(nodes()),
       exportMobilePublicSources: () => exportDgMobileLoadedPublicScripts(document),
@@ -18210,6 +18317,8 @@ ${DG_MOBILE_LAYOUT_CSS}
         }
         running = false;
         disposed = true;
+        cleanupCardFeed();
+        pokerTracker.resetFeed();
         epoch++;
         clearInterval(timer);
         official.dispose();

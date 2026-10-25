@@ -33,6 +33,19 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   const ledger=new DgBetLedger();
   const manualLedger=new DgManualLedger();
   const pokerTracker=createDgPokerTracker();
+  let cardFeed:any=null;let cleanupCardFeed:()=>void=()=>{};
+  function bindCardFeed(){
+    const feed=(window as any).__AUTOBAC_DG_CARD_FEED__;if(feed===cardFeed)return;
+    cleanupCardFeed();cleanupCardFeed=()=>{};cardFeed=feed;
+    if(typeof feed?.subscribe!=='function')return;
+    cleanupCardFeed=feed.subscribe((packet:any)=>{
+      if(disposed)return;
+      // This same-page feed contains only sanitized incoming card fields. It
+      // starts before the console and replays each table's latest completed hand.
+      pokerTracker.observePacket(packet);
+      queueMicrotask(()=>{if(!disposed){pokerTracker.observe(boards());render();if(running)void tick();}});
+    });
+  }
   const sessionTimer=createDgSessionTimer();
   const usageHistory=createDgUsageHistory();
   let running=false,busy=false,disposed=false,epoch=0,once=false;
@@ -224,7 +237,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   function attach(all:any[]){
     const p=findDgScenePlayer(all);walletPlayer=p;
     if(!p?.socketMan?.on||!p?.socketMan?.off)return;
-    if(account&&p!==account){stop('DG 工作階段改變，請重新載入腳本');return;}
+    if(account&&p!==account){pokerTracker.resetFeed();cleanupCardFeed();stop('DG 工作階段改變，請重新載入腳本');return;}
     if(socket===p.socketMan)return;
     socket?.off('RECEIVED_SUCCESS',owner,onMessage);
     socket=p.socketMan;account=p;
@@ -414,7 +427,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     if((window as any).__DG_MANUAL_CAPTURE_ACTIVE__&&running)stop('手動流程記錄中，工具已停止');
     const manualRisk=manualRiskBlockReason();if(running&&manualRisk)stop(manualRisk);
     if(running&&roomCount==='1'&&scope==='global'&&stakeAmount('global')>maxStake)stop(`下一注 ${money(stakeAmount('global'))} 超過單筆上限 ${money(maxStake)}；停止新增下注`);
-    const all=nodes();pokerTracker.observe(boards(all));attach(all);autoScan(boards(all));trackRounds(boards(all));render();
+    bindCardFeed();const all=nodes();pokerTracker.observe(boards(all));attach(all);autoScan(boards(all));trackRounds(boards(all));render();
     if(socket?.socket?.connected===false&&(ledger.pending().length||manualLedger.pending().length)){
       for(const b of ledger.pending())b.state='uncertain';manualLedger.markReloadUnresolved();persist();stop('DG 連線已中斷；待結算下注保留為未確定，請核對正式紀錄');
     }
@@ -683,7 +696,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const seconds=focus?Math.floor(remaining(focus)):null;
     q('countdown').textContent=seconds!==null?String(seconds):'—';
     q('ring').style.setProperty('--progress',`${seconds!==null?Math.min(1,seconds/Math.max(1,Number(focus.gameInfo.countDown)))*360:0}deg`);
-    q('focus-meta').textContent=focus?`靴 ${focus.gameInfo.shoeId??'—'} · 局 ${focus.gameInfo.playId??'—'} · ${getPatternInfo(roads(focus)).label} · ${strategyLabel}`:`${strategyLabel} · 等候牌路與倒數`;
+    q('focus-meta').textContent=focus?`靴 ${pokerTracker.identity(focus)?.shoe??'—'} · 局 ${focus.gameInfo.playId??'—'} · ${getPatternInfo(roads(focus)).label} · ${strategyLabel}`:`${strategyLabel} · 等候牌路與倒數`;
     if(rec?.reason&&!currentBet)q('focus-meta').textContent+=' · '+rec.reason;
     if(currentBet){const original=AI_PROVIDER_OPTIONS.find(x=>x.key===currentBet.provider)?.label;q('focus-meta').textContent+=original&&original!==strategyLabel?`｜此單 ${original}`:'';}
     if(!focus&&!currentBet){
@@ -752,7 +765,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       const badge=document.createElement('span');badge.className='table-badge';badge.textContent=shownSide??'—';
       const info=document.createElement('div');info.className='table-info';
       const title=document.createElement('strong');title.textContent=c.gameInfo.tableName||String(c.tableId);
-      const meta=document.createElement('small');meta.textContent=`靴 ${c.gameInfo.shoeId??'—'} · 局 ${c.gameInfo.playId??'—'} · ${getPatternInfo(results).label}`;
+      const meta=document.createElement('small');meta.textContent=`靴 ${pokerTracker.identity(c)?.shoe??'—'} · 局 ${c.gameInfo.playId??'—'} · ${getPatternInfo(results).label}`;
       info.append(title,meta);
       const amount=document.createElement('div');amount.className='table-rec';amount.textContent=money(ownPending?.amount??stakeAmount(String(c.tableId),previewBase,previewScope));
       const detail=document.createElement('small');const limitCheck=checkDgAmount(c,stakeAmount(String(c.tableId),previewBase,previewScope));
@@ -945,6 +958,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     version:'3.2.2-mobile-v329-native',start:()=>requestStart(),stop,scan,
     flushUsageKeepalive:()=>{if(running&&runEventId){usageHistory.updateElapsed(sessionTimer.view().elapsedMs);persistUsage();reportUsage(runEventId,true,true);}},
     usageHistory:()=>usageHistory.view(),settingsSnapshot:()=>activeSettings?JSON.parse(JSON.stringify(activeSettings)):null,stakeDiagnostics,officialTurnover:official.view,refreshOfficialTurnover:()=>official.refresh(true),
+    cardMemory:()=>pokerTracker.memoryView(),
     mobileDiagnostics:()=>inspectDgMobileNativeSurface(window),
     runtimeDiagnostics:()=>describeDgScene(nodes()),
     exportMobilePublicSources:()=>exportDgMobileLoadedPublicScripts(document),
@@ -954,7 +968,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     exportLedger:()=>JSON.parse(JSON.stringify(ledger.state)),
     exportManualLedger:()=>manualLedger.snapshot(),
     analysis:(tableId:string)=>{const c=boards().find(n=>String(n.tableId)===String(tableId));return c?(provider==='counting'||provider==='parity'?strategyFor(c).reason||'等待實際牌張':providerAnalysisText(provider,{results:roads(c)})):'未找到桌台';},
-    dispose:()=>{if(running&&runEventId){usageHistory.updateElapsed(sessionTimer.view().elapsedMs);persistUsage();reportUsage(runEventId,true,true);}running=false;disposed=true;epoch++;clearInterval(timer);official.dispose();cleanupFeedback();cleanupTouchScroll();cleanupResize();providerMenu.cleanup();socket?.off('RECEIVED_SUCCESS',owner,onMessage);if(socket?.sendData===sendObserver)socket.sendData=originalSend;document.removeEventListener('visibilitychange',visibility);window.removeEventListener('resize',fitPanel);window.removeEventListener(DG_SETTINGS_SYNC_EVENT,settingsSync);persist();host.remove();},
+    dispose:()=>{if(running&&runEventId){usageHistory.updateElapsed(sessionTimer.view().elapsedMs);persistUsage();reportUsage(runEventId,true,true);}running=false;disposed=true;cleanupCardFeed();pokerTracker.resetFeed();epoch++;clearInterval(timer);official.dispose();cleanupFeedback();cleanupTouchScroll();cleanupResize();providerMenu.cleanup();socket?.off('RECEIVED_SUCCESS',owner,onMessage);if(socket?.sendData===sendObserver)socket.sendData=originalSend;document.removeEventListener('visibilitychange',visibility);window.removeEventListener('resize',fitPanel);window.removeEventListener(DG_SETTINGS_SYNC_EVENT,settingsSync);persist();host.remove();},
   };
   attach(nodes());scan();showPage('overview');official.refresh();render();
 })();

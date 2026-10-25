@@ -1,5 +1,5 @@
 {
-  "version": "3.2.24-poker-strategy-data-routing",
+  "version": "3.2.25-live-card-padding-passive-memory",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -99,5 +99,7 @@
   "successSummary": "latest-confirmed-table-amount-only; no-stale-success-for-new-submission",
   "settingsEditing": "stopped-settings-editable; running-busy-locked; unresolved-start-blocked",
   "uploadedBaseline": "AutoTable-main.zip / 2026-10-25",
-  "pokerStrategies": "original-parity-and-v38; complete-same-table-same-shoe-previous-round; no-three-road-gate; final-direction-first"
+  "pokerStrategies": "original-parity-and-v38; complete-same-table-same-shoe-previous-round; no-three-road-gate; final-direction-first",
+  "cardMemory": "passive-incoming-native-frames; per-table-last-complete-hand; compact-old-history-20min-retain-last; no-new-ui",
+  "dgCardPadding": "allow-unused-third-slot-zero-only; shoe-zero-valid"
 }

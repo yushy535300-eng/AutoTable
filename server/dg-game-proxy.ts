@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { ensureDgRelayShell, type DgRelay } from "./dg-relay";
 import { DG_REPORT_BRIDGE_SCRIPT } from "./dg-report-bridge";
+import { DG_CARD_BRIDGE_SCRIPT } from "./dg-card-bridge";
 import { withPageZoomLock } from '../shared/page-zoom-lock';
 
 type ProxySession = {
@@ -62,9 +63,10 @@ function injectProxyHook(html: string, sessionId: string, upstreamOrigin: string
 `if(!NativeWS||window.__MT_DG_PROXY_WS__)return;\n` +
 `window.__MT_DG_PROXY_WS__=true;\n` +
 DG_REPORT_BRIDGE_SCRIPT +
+DG_CARD_BRIDGE_SCRIPT +
 `const __frames=[];let __frameTimer=0,__flushing=false;\n` +
 `const __flushFrames=async()=>{if(__flushing||!__frames.length)return;__flushing=true;clearTimeout(__frameTimer);__frameTimer=0;const frames=__frames.splice(0,64);try{await fetch(\"/api/dg/proxy/frames\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify({frames}),keepalive:true});}catch{}finally{__flushing=false;if(__frames.length)__frameTimer=setTimeout(__flushFrames,30);}};\n` +
-`const __mirrorFrame=async value=>{try{let buf;if(value instanceof ArrayBuffer)buf=value;else if(ArrayBuffer.isView(value))buf=value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength);else if(typeof Blob!==\"undefined\"&&value instanceof Blob)buf=await value.arrayBuffer();else return;const bytes=new Uint8Array(buf);let binary=\"\";for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+32768));__frames.push(btoa(binary));if(__frames.length>=32)void __flushFrames();else if(!__frameTimer)__frameTimer=setTimeout(__flushFrames,30);}catch{}};\n` +
+`const __mirrorFrame=async value=>{try{let buf;if(value instanceof ArrayBuffer)buf=value;else if(ArrayBuffer.isView(value))buf=value.buffer.slice(value.byteOffset,value.byteOffset+value.byteLength);else if(typeof Blob!==\"undefined\"&&value instanceof Blob)buf=await value.arrayBuffer();else return;__dgCardReceive(buf);const bytes=new Uint8Array(buf);let binary=\"\";for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+32768));__frames.push(btoa(binary));if(__frames.length>=32)void __flushFrames();else if(!__frameTimer)__frameTimer=setTimeout(__flushFrames,30);}catch{}};\n` +
 `class MTDGWebSocket extends NativeWS{constructor(url,protocols){const raw=String(url||\"\");if(arguments.length>1)super(raw,protocols);else super(raw);this.addEventListener(\"message\",event=>{void __mirrorFrame(event.data);__pnlReceive(this,event);});}}\n` +
 `window.WebSocket=MTDGWebSocket;\n` +
 `const mapHttp=(value)=>{try{const raw=String(value||"");if(!raw)return value;const abs=raw.startsWith("//")?location.protocol+raw:raw;if(!(raw.startsWith("http://")||raw.startsWith("https://")||raw.startsWith("//")))return value;const u=new URL(abs,location.href);if(u.origin===__origin)return u.pathname+u.search+u.hash;if(u.hostname===location.hostname&&String(u.port||"")!==String(location.port||""))return u.pathname+u.search+u.hash;return value;}catch{return value;}};\n` +

@@ -134,12 +134,12 @@ async function testFormulaSidesWithoutRoadGate(browser, provider, expectedSides)
   ]);
   try {
     await setFixtureCards(page, [
-      { id: 801, shoe: "S-A", playId: 40, roadCount: 0 },
-      { id: 802, shoe: "S-B", playId: 91, roadCount: 1 }
+      { id: 801, shoe: "200", playId: 40, roadCount: 0 },
+      { id: 802, shoe: "201", playId: 91, roadCount: 1 }
     ]);
     await seedPreviousNaturals(page, [
-      { id: 801, shoe: "S-A", playId: 40, poker: PREVIOUS_NATURAL },
-      { id: 802, shoe: "S-B", playId: 91, poker: SECOND_NATURAL }
+      { id: 801, shoe: "200", playId: 40, poker: PREVIOUS_NATURAL },
+      { id: 802, shoe: "201", playId: 91, poker: SECOND_NATURAL }
     ]);
     await selectPokerProvider(page, provider, "all");
     await approveAndStart(page);
@@ -161,8 +161,8 @@ async function testFormulaSidesWithoutRoadGate(browser, provider, expectedSides)
 async function testUnacceptedCmd6NeverSucceeds(browser) {
   const page = await openOfflinePage(browser, [{ id: 811, method: "ei", tableName: "RB-reject" }]);
   try {
-    await setFixtureCards(page, [{ id: 811, shoe: "S-R", playId: 30, roadCount: 0 }]);
-    await seedPreviousNaturals(page, [{ id: 811, shoe: "S-R", playId: 30, poker: PREVIOUS_NATURAL }]);
+    await setFixtureCards(page, [{ id: 811, shoe: "202", playId: 30, roadCount: 0 }]);
+    await seedPreviousNaturals(page, [{ id: 811, shoe: "202", playId: 30, poker: PREVIOUS_NATURAL }]);
     await selectPokerProvider(page, "parity", "1");
     await approveAndStart(page);
     await waitForPacketCount(page, 1, "rejection case sends exactly one source-gated native packet");
@@ -182,7 +182,7 @@ async function testUnacceptedCmd6NeverSucceeds(browser) {
     await page.evaluate(() => {
       const card = window.__offlineMobile.cards[0];
       card.gameInfo.playId += 1;
-      card.gameInfo.gameNo = "S-R-811-next";
+      card.gameInfo.gameNo = "203";
       card.gameInfo.starTime = Date.now();
     });
     await pause(700);
@@ -199,16 +199,16 @@ async function testPacketIdentityFilters(browser) {
   ]);
   try {
     await setFixtureCards(page, [
-      { id: 821, shoe: "S-filter", playId: 60, roadCount: 0 },
-      { id: 822, shoe: "S-valid", playId: 70, roadCount: 0 }
+      { id: 821, shoe: "205", playId: 60, roadCount: 0 },
+      { id: 822, shoe: "210", playId: 70, roadCount: 0 }
     ]);
     await emitReceivedTable(page, [
-      tablePacket(821, "S-filter", 59, TIED_COUNTING_NATURAL), // V38 2-versus-2: no final side
-      tablePacket(821, "S-filter", 59, { player: "4-17", banker: "30-43-2" }), // impossible natural extra card
-      tablePacket(999, "S-filter", 59, PREVIOUS_NATURAL), // no known live table
-      tablePacket(821, "wrong-shoe", 59, PREVIOUS_NATURAL), // cross-shoe
-      tablePacket(821, "S-filter", 58, PREVIOUS_NATURAL), // stale: not current - 1
-      tablePacket(822, "S-valid", 69, PREVIOUS_NATURAL) // valid other table
+      tablePacket(821, "205", 59, TIED_COUNTING_NATURAL), // V38 2-versus-2: no final side
+      tablePacket(821, "205", 59, { player: "4-17", banker: "30-43-2" }), // impossible natural extra card
+      tablePacket(999, "205", 59, PREVIOUS_NATURAL), // no known live table
+      tablePacket(821, "212", 59, PREVIOUS_NATURAL), // cross-shoe
+      tablePacket(821, "205", 58, PREVIOUS_NATURAL), // stale: not current - 1
+      tablePacket(822, "210", 69, PREVIOUS_NATURAL) // valid other table
     ]);
     await selectPokerProvider(page, "counting", "all");
     await approveAndStart(page);
@@ -231,12 +231,12 @@ async function testSingleTablePrefersLaterCompleteEvidence(browser) {
   ]);
   try {
     await setFixtureCards(page, [
-      { id: 851, shoe: "S-waiting", playId: 41, roadCount: 0 },
-      { id: 852, shoe: "S-ready", playId: 41, roadCount: 0 }
+      { id: 851, shoe: "211", playId: 41, roadCount: 0 },
+      { id: 852, shoe: "208", playId: 41, roadCount: 0 }
     ]);
     // The first visible card intentionally has no same-table completed prior hand.
     // Only the later card has a verified PublicBean.table previous natural.
-    await seedPreviousNaturals(page, [{ id: 852, shoe: "S-ready", playId: 41, poker: PREVIOUS_NATURAL }]);
+    await seedPreviousNaturals(page, [{ id: 852, shoe: "208", playId: 41, poker: PREVIOUS_NATURAL }]);
     await selectPokerProvider(page, "parity", "1");
     await approveAndStart(page);
     await waitForPacketCount(page, 1, "count=1 chooses the later complete-card table instead of waiting on the first unknown table");
@@ -275,12 +275,12 @@ async function testFormalReceiptAndOnePerNewRound(browser) {
   ]);
   try {
     await setFixtureCards(page, [
-      { id: 831, shoe: "S-life-A", playId: 70, roadCount: 0 },
-      { id: 832, shoe: "S-life-B", playId: 80, roadCount: 1 }
+      { id: 831, shoe: "206", playId: 70, roadCount: 0 },
+      { id: 832, shoe: "207", playId: 80, roadCount: 1 }
     ]);
     await seedPreviousNaturals(page, [
-      { id: 831, shoe: "S-life-A", playId: 70, poker: PREVIOUS_NATURAL },
-      { id: 832, shoe: "S-life-B", playId: 80, poker: SECOND_NATURAL }
+      { id: 831, shoe: "206", playId: 70, poker: PREVIOUS_NATURAL },
+      { id: 832, shoe: "207", playId: 80, poker: SECOND_NATURAL }
     ]);
     await selectPokerProvider(page, "counting", "all");
     await approveAndStart(page);
@@ -297,8 +297,8 @@ async function testFormalReceiptAndOnePerNewRound(browser) {
     assert((await ledger(page)).bets.every((bet) => bet.state === "accepted"), "only exact codeId=0 native receipts formally accept both packets");
 
     await closeRoundObserveCurrentThenAdvance(page, [
-      { id: 831, shoe: "S-life-A", previousPlayId: 70, nextPlayId: 71, poker: PREVIOUS_NATURAL },
-      { id: 832, shoe: "S-life-B", previousPlayId: 80, nextPlayId: 81, poker: SECOND_NATURAL }
+      { id: 831, shoe: "206", previousPlayId: 70, nextPlayId: 71, poker: PREVIOUS_NATURAL },
+      { id: 832, shoe: "207", previousPlayId: 80, nextPlayId: 81, poker: SECOND_NATURAL }
     ]);
     await pause(700);
     assert.equal((await commandPackets(page)).length, 2, "accepted-but-unsettled packets block all later round sends");
@@ -319,8 +319,8 @@ async function testFormalReceiptAndOnePerNewRound(browser) {
 async function testStopAndExpiryPreventNewPackets(browser) {
   const stopped = await openOfflinePage(browser, [{ id: 841, method: "ei", tableName: "RB-stop" }]);
   try {
-    await setFixtureCards(stopped, [{ id: 841, shoe: "S-stop", playId: 20, roadCount: 0 }]);
-    await seedPreviousNaturals(stopped, [{ id: 841, shoe: "S-stop", playId: 20, poker: PREVIOUS_NATURAL }]);
+    await setFixtureCards(stopped, [{ id: 841, shoe: "209", playId: 20, roadCount: 0 }]);
+    await seedPreviousNaturals(stopped, [{ id: 841, shoe: "209", playId: 20, poker: PREVIOUS_NATURAL }]);
     await selectPokerProvider(stopped, "parity", "1");
     await approveAndStart(stopped);
     await waitForPacketCount(stopped, 1, "stop case submits only its initial complete-card decision");
@@ -328,7 +328,7 @@ async function testStopAndExpiryPreventNewPackets(browser) {
     await formalAcceptance(stopped, packet);
     await formalSettlement(stopped, packet, 100);
     await stopped.evaluate(() => window.__DG_SINGLEPAGE__.stop());
-    await closeRoundObserveCurrentThenAdvance(stopped, [{ id: 841, shoe: "S-stop", previousPlayId: 20, nextPlayId: 21, poker: PREVIOUS_NATURAL }]);
+    await closeRoundObserveCurrentThenAdvance(stopped, [{ id: 841, shoe: "209", previousPlayId: 20, nextPlayId: 21, poker: PREVIOUS_NATURAL }]);
     await pause(800);
     assert.equal((await commandPackets(stopped)).length, 1, "manual stop blocks an otherwise valid complete-card next round");
   } finally {
@@ -343,8 +343,8 @@ async function testStopAndExpiryPreventNewPackets(browser) {
       Date.now = () => base + window.__testOffset;
       window.Laya.Browser.now = () => Date.now();
     });
-    await setFixtureCards(expired, [{ id: 842, shoe: "S-expiry", playId: 30, roadCount: 0, countDown: 3600 }]);
-    await seedPreviousNaturals(expired, [{ id: 842, shoe: "S-expiry", playId: 30, poker: PREVIOUS_NATURAL }]);
+    await setFixtureCards(expired, [{ id: 842, shoe: "204", playId: 30, roadCount: 0, countDown: 3600 }]);
+    await seedPreviousNaturals(expired, [{ id: 842, shoe: "204", playId: 30, poker: PREVIOUS_NATURAL }]);
     await selectPokerProvider(expired, "counting", "1");
     await expired.evaluate(() => {
       const shadow = document.querySelector("#__dg_singlepage_panel__").shadowRoot;
