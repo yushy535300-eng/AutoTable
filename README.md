@@ -1,6 +1,6 @@
 # 最新上傳基準（2026-10-25）
 
-本版以使用者提供的 `AutoTable-main.zip` 為基準，僅修正奇偶與V38算牌的每桌完整牌張接線及自動選桌條件；原登入、白名單、面板與風控保留。最新版真實牌張／被動記牌修正詳見 `AUTOBAC-V3.2.25-DEPLOY.md` 與 `LATEST-BASELINE.json`。
+本版以使用者提供的 `AutoTable-main.zip` 為基準，僅修正奇偶與V38算牌的每桌完整牌張接線及自動選桌條件；原登入、白名單、面板與風控保留。最新版真實牌張／被動記牌修正詳見 `AUTOBAC-V3.2.27-DEPLOY.md` 與 `LATEST-BASELINE.json`。
 
 > 最新完整累積版為 AutoBac v3.2.23，部署及查看方式請先讀 [最新版說明](AUTOBAC-V3.2.23-DEPLOY.md)。目前僅DG入口，MT仍停用，白名單必須保留。
 

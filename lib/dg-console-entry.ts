@@ -62,7 +62,8 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   let selected=new Set<string>(),status='停止：先讀取 DG 單頁多桌資料';
   let socket:any=null,account:any=null;
   let walletPlayer:any=null;
-  let nativeBetKey='',originalSend:any=null,sendObserver:any=null;
+  const nativeToolPackets=new WeakSet<object>();let originalSend:any=null,sendObserver:any=null;
+  const manualAwaitingReceipt=new Set<string>();
   const owner={},logs:string[]=[],contexts=new Map<string,any>();
   let persistKey='';
   let compact=true,reportPeriod:'today'|'yesterday'|'week'='today',reportPage=0,reportTab:'bets'|'transactions'|'usage'='bets';
@@ -251,7 +252,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const scopedManual=window.__DG_MANUAL_LEDGER_PERSIST_KEY__===persistKey?window.__DG_MANUAL_LEDGER_STATE__:null;
     ledger.state=new DgBetLedger(savedLedger??scopedMemory).state;
     manualLedger.state=new DgManualLedger(savedManual??scopedManual).state;
-    manualLedger.markReloadUnresolved();
+    manualLedger.markReloadUnresolved();manualAwaitingReceipt.clear();
     try{usageHistory.load(JSON.parse(localStorage.getItem(persistKey+'.usage.v1')??'null'));}catch{usageHistory.load(null);}
     restoreUsageCheckpoint();
     ledger.state.roundStartedAt??=mountedAt;
@@ -261,7 +262,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     sendObserver=function(this:any,msg:any,...args:any[]){
       if(Number(msg?.cmd)===6){
         const key=`${msg.tableId}:${msg.gameNo}`;
-        if(nativeBetKey!==key){
+        if(!nativeToolPackets.has(msg)){
           // This is only a passive view of a human-operated native packet.  It does
           // not synthesize a receipt, route it into the tool ledger, or read balance deltas.
           const before=manualLedger.snapshot(),observed=manualLedger.observeSent(msg);
@@ -269,12 +270,17 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
           if(bet){
             if(bet.state!=='settled'){bet.attributionUncertain=true;bet.state='uncertain';}manualLedger.markAttributionUncertain(key);
           }
+          if(observed?.created&&observed.unknown&&!bet)manualAwaitingReceipt.add(key);
+          else if(observed?.duplicate||bet)manualAwaitingReceipt.delete(key);
           let result:any;
-          try{result=originalSend.call(this,msg,...args);}catch(error){manualLedger.state=new DgManualLedger(before).state;if(bet){persist();stop('人工原生送出未能核對；保留同局歸屬保護，停止新增下注');}throw error;}
+          try{result=originalSend.call(this,msg,...args);}catch(error){manualAwaitingReceipt.delete(key);manualLedger.state=new DgManualLedger(before).state;if(bet){persist();stop('人工原生送出未能核對；保留同局歸屬保護，停止新增下注');}throw error;}
           if(observed||bet){
             persist();
             if(bet)stop('偵測同局人工額外下注；本筆損益不能單獨核對，停止配注推進');
-            else if(observed?.unknown&&running)stop(observed.duplicate&&observed.bet.attributionUncertain?'偵測同局第二筆人工原生下注；歸屬待核，已停止新增下注，不以後續結算推算':'人工原生下注金額未能核對；停止新增下注，等待正式接受／結算事件');
+            else if(observed?.unknown&&observed.bet.state==='unknown'&&running){
+              if(isManualReceiptAwaiting(observed.bet))log('人工原生下注等待正式接受回覆；暫緩新送單，確認後繼續');
+              else stop(observed.duplicate&&observed.bet.attributionUncertain?'偵測同局第二筆人工原生下注；歸屬待核，已停止新增下注，不以後續結算推算':'人工原生下注金額未能核對；停止新增下注，等待正式接受／結算事件');
+            }
             else if(observed?.created)log(`${observed.bet.tableId}｜${observed.bet.gameNo}｜已觀察人工原生下注；等待平台接受回覆`);
           }
           return result;
@@ -304,7 +310,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     }
     const manualReceipt=manualLedger.receipt(msg);
     if(manualReceipt){
-      persist();
+      manualAwaitingReceipt.delete(manualReceipt.bet.key);persist();
       if('settled' in manualReceipt&&manualReceipt.settled)recordManualSettlement(manualReceipt.bet,manualReceipt.pnl);
       else{
         log(`${manualReceipt.bet.tableId}｜${manualReceipt.bet.gameNo}｜人工原生下注${manualReceipt.accepted?'已確認接受，待結算':manualReceipt.bet.state==='rejected'?'已被拒絕，不計入損益':'未能核對接受，維持人工待核'}`);
@@ -322,7 +328,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       window.dispatchEvent(new CustomEvent('dg-singlepage-settlement',{detail:{...settled.bet,nextLevel:settled.nextLevel}}));
       window.setTimeout(()=>official.refresh(true),800);
     }
-    const manualSettled=manualLedger.settle(msg);
+    const manualSettled=manualLedger.settle(msg,isManualReceiptAwaiting(manualLedger.get(`${msg?.tableId}:${msg?.gameNo}`)));
     if(manualSettled&&'settled' in manualSettled&&manualSettled.settled)recordManualSettlement(manualSettled.bet,manualSettled.pnl);
   }
   function migrateSingleChain(){
@@ -346,8 +352,24 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   function automatedRoundPnl(){return automatedRoundBets().reduce((sum,b)=>sum+(b.pnl??0),0);}
   function manualRoundPnl(){return manualLedger.roundPnl();}
   function roundPnl(){return automatedRoundPnl()+manualRoundPnl();}
-  function manualRiskBlockReason(){const mixed=manualLedger.pending().filter(b=>b.attributionUncertain).length;if(mixed)return `有 ${mixed} 筆同局人工原生下注歸屬待核；已停止新增下注，不以後續結算推算`;const exposure=manualLedger.riskExposure();return exposure.unknownCount?`有 ${exposure.unknownCount} 筆人工原生下注金額未能核對；停止新增下注，等待正式接受／結算事件`:null;}
+  function isManualReceiptAwaiting(bet:any){
+    const age=bet?Date.now()-bet.createdAt:-1;
+    return !!bet&&manualAwaitingReceipt.has(bet.key)&&bet.state==='unknown'&&bet.amount===null&&!bet.attributionUncertain&&age>=0&&age<=12000;
+  }
+  function manualReceiptHoldReason(){return manualLedger.pending().some(isManualReceiptAwaiting)?'人工原生下注等待正式接受回覆；暫緩新送單，確認後繼續':null;}
+  function manualRiskBlockReason(){
+    const pending=manualLedger.pending(),mixed=pending.filter(b=>b.attributionUncertain).length;
+    if(mixed)return `有 ${mixed} 筆同局人工原生下注歸屬待核；已停止新增下注，不以後續結算推算`;
+    const unknown=pending.filter(b=>(b.state==='unknown'||b.amount===null)&&!isManualReceiptAwaiting(b)).length;
+    return unknown?`有 ${unknown} 筆人工原生下注金額未能核對；停止新增下注，等待正式接受／結算事件`:null;
+  }
   function riskPending(){return [...ledger.pending(),...manualLedger.riskExposure().known];}
+  function knownManualExposureWait(amount:number,ownReservation?:string){
+    if(manualRiskBlockReason()||!manualLedger.riskExposure().known.length||riskStopReason(roundPnl(),riskLimits))return false;
+    return nextStakeRiskCheck(roundPnl(),riskLimits,ledger.pending(),amount,ownReservation).ok;
+  }
+  function manualExposureWaitText(reason:string){return '人工待結算暫占風險額度；'+reason.replace(/；停止新增下注$/,'；結算後繼續');}
+
   function unacknowledgedFunds(){return ledger.pending().filter(b=>b.state!=='accepted').reduce((sum,b)=>sum+b.amount,0)+manualLedger.riskExposure().known.reduce((sum,b)=>sum+b.amount,0);}
   async function execute(card:any,token:number,budget:{remaining:number}){
     if(stopIfTimeExpired())return;
@@ -361,8 +383,9 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const amount=stakeAmount(tableId);
     if(amount>maxStake){stop(`下一注 ${money(amount)} 超過單筆上限 ${money(maxStake)}；停止新增下注`);return;}
     const manualRisk=manualRiskBlockReason();if(manualRisk){stop(manualRisk);return;}
+    const receiptHold=manualReceiptHoldReason();if(receiptHold){waitTable(card,receiptHold);return;}
     const riskPreflight=nextStakeRiskCheck(roundPnl(),riskLimits,riskPending(),amount);
-    if(!riskPreflight.ok){stop(riskPreflight.reason!);return;}
+    if(!riskPreflight.ok){if(knownManualExposureWait(amount)){waitTable(card,manualExposureWaitText(riskPreflight.reason!));return;}stop(riskPreflight.reason!);return;}
     const preflight=checkDgAmount(card,amount);
     if(!preflight.ok){waitTable(card,preflight.reason);return;}
     if(amount>budget.remaining){waitTable(card,`同批可用餘額 ${money(Math.max(0,budget.remaining))} 不足 ${money(amount)}；其他桌已預留，不送出`);return;}
@@ -374,8 +397,13 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       if((window as any).__DG_MANUAL_CAPTURE_ACTIVE__)throw new Error('手動流程記錄中，工具不送單');
       if(!running||disposed||token!==epoch||document.hidden||String(card.gameInfo.gameNo)!==gameNo||!ready(card)||!sameSession(card))throw new Error('已停止、局號改變或停止接受下注');
       const manualRisk=manualRiskBlockReason();if(manualRisk)throw new Error(manualRisk);
+      const receiptHold=manualReceiptHoldReason();if(receiptHold){const error=new Error(receiptHold);(error as any).manualExposureWait=true;throw error;}
       const riskReason=riskStopReason(roundPnl(),riskLimits);if(riskReason)throw new Error(riskReason);
-      const exposure=nextStakeRiskCheck(roundPnl(),riskLimits,riskPending(),amount,bet.key);if(!exposure.ok)throw new Error(exposure.reason!);
+      const exposure=nextStakeRiskCheck(roundPnl(),riskLimits,riskPending(),amount,bet.key);
+      if(!exposure.ok){
+        if(knownManualExposureWait(amount,bet.key)){const error=new Error(manualExposureWaitText(exposure.reason!));(error as any).manualExposureWait=true;throw error;}
+        throw new Error(exposure.reason!);
+      }
       const check=checkDgAmount(card,amount);if(!check.ok)throw new Error(check.reason);
     }
     try{
@@ -410,10 +438,13 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
       guard();
       ledger.submit(bet);persist();
       budget.remaining-=amount;
-      nativeBetKey=bet.key;
-      try{socket.sendData(packet);}finally{nativeBetKey='';}
+      nativeToolPackets.add(packet);
+      try{socket.sendData(packet);}finally{nativeToolPackets.delete(packet);}
       log(`${tableId}｜${gameNo}｜已直接傳送 cmd 6：${side} ${money(amount)}；等待平台接受回覆`);
     }catch(error){
+      if((error as any)?.manualExposureWait&&bet.state==='reserved'){
+        ledger.abort(bet);persist();waitTable(card,String((error as Error).message));return;
+      }
       if(bet.state==='reserved'){
         ledger.abort(bet);
       }else ledger.uncertain(bet);
@@ -437,11 +468,15 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     }
     for(const b of manualLedger.pending()){
       if(b.state==='sent'&&Date.now()-b.createdAt>12000){manualLedger.markUnresolved(b);persist();stop('人工原生下注接受回覆逾時；停止新增下注並保留待核紀錄');}
-      if(running&&b.state==='accepted'&&Date.now()-(b.acceptedAt??b.createdAt)>180000)stop('人工原生下注結算逾時；已停止，保留待結算帳本');
+      if(running&&b.state==='accepted'&&Date.now()-(b.acceptedAt??b.createdAt)>180000){
+        const card=boards(all).find(c=>String(c.tableId)===b.tableId);
+        if(card)waitTable(card,'人工已接受注單結算延遲；保留本金與待結算，不重送、不假結算');
+      }
     }
     if(!running||!socket||document.hidden)return;
     if(manualRiskBlockReason()){stop(manualRiskBlockReason()!);return;}
     const riskReason=riskStopReason(roundPnl(),riskLimits);if(riskReason){stop(riskReason);return;}
+    if(manualReceiptHoldReason())return;
     const cards=boards(all).filter(c=>selected.has(String(c.tableId)));
     // Multiple authenticated packets in one scan, without waiting for any other
     // table's receipt or settlement. The socket itself still serializes bytes.
@@ -710,7 +745,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     if(manualPending.length){
       const unknown=manualPending.filter(b=>b.state==='unknown').length,accepted=manualPending.filter(b=>b.state==='accepted').length,mixed=manualPending.filter(b=>b.attributionUncertain).length;
       focusTableText='人工原生下注：';
-      focusPhaseText=mixed?`${mixed} 筆同局歸屬待核，已停止新增下注，不以結算推算`:unknown?`${unknown} 筆待核對，已停止新增下注`:accepted?`${accepted} 筆已接受，等待結算`:`${manualPending.length} 筆等待接受回覆`;
+      focusPhaseText=!running?`自動已停止｜${userStatus(status)}`:mixed?`${mixed} 筆同局歸屬待核，暫緩新增下注`:unknown?`${unknown} 筆等待正式接受，暫緩新送單`:accepted?`${accepted} 筆已接受，等待結算`:`${manualPending.length} 筆等待接受回覆`;
     }
     if(q('focus-table').textContent!==focusTableText)q('focus-table').textContent=focusTableText;
     if(q('focus-phase').textContent!==focusPhaseText)q('focus-phase').textContent=focusPhaseText;

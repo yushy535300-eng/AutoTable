@@ -102,14 +102,27 @@ async function settleAuto(page,pnl){
    await approveAndStart(page);await settleAuto(page,-100);
    await send(page,sent('manual-exposure',100));await emit(page,receipt('manual-exposure',100));
    const before=await automaticPackets(page);await page.evaluate(()=>window.__offlineMobile.cards.forEach(c=>{c.gameInfo.gameNo+='-new';c.gameInfo.starTime=Date.now()}));await sleep(650);
-   assert.equal((await state(page)).running,false);assert.equal(await automaticPackets(page),before,'manual accepted principal consumes risk budget before another auto packet');
+   assert.equal((await state(page)).running,true,'known manual pending exposure pauses new sends without stopping the run');assert.equal(await automaticPackets(page),before,'manual accepted principal still reserves risk budget');
+   await emit(page,settle('manual-exposure',95));await sleep(650);
+   assert.equal((await state(page)).running,true);assert.equal((await state(page)).roundPnl,-5);assert.equal(await automaticPackets(page),before+1,'verified manual settlement releases budget and auto resumes without another Start');
+  }finally{await stopAndClose(page)}
+  // A known accepted manual wager may remain pending; its age alone must not stop auto.
+  page=await readyPage(browser,'flat',{loss:600,profit:2000});
+  try{
+   await approveAndStart(page);await settleAuto(page,0);
+   await send(page,sent('manual-delayed',100));await emit(page,receipt('manual-delayed',100));
+   await page.evaluate(()=>{const time=Date.now()+181000;Date.now=()=>time;window.Laya.Browser.now=()=>time;window.__offlineMobile.cards.forEach(c=>{c.gameInfo.stateId=2;c.gameInfo.starTime=time;});});
+   await sleep(650);const s=await state(page);
+   assert.equal(s.running,true,'accepted manual age does not permanently stop automation');assert.equal(s.manualPending.length,1);assert.equal(s.manualPending[0].state,'accepted');assert.equal(s.roundPnl,0,'a delayed manual wager must not be guessed as settled');
   }finally{await stopAndClose(page)}
   // Opaque/manual-unknown cannot fabricate P/L or bypass fresh-start lock.
   page=await readyPage(browser);
   try{
    await approveAndStart(page);await settleAuto(page,0);
    await send(page,{cmd:6,tableId:799,gameNo:'manual-opaque',list:['opaque-test']});
-   assert.equal((await state(page)).running,false);await emit(page,settle('manual-opaque',900));assert.equal((await state(page)).roundPnl,0);
+   assert.equal((await state(page)).running,true,'fresh opaque manual command holds execution, not a permanent stop');await emit(page,settle('manual-opaque',900));assert.equal((await state(page)).roundPnl,0);
+   await page.evaluate(()=>{const time=Date.now()+13000;Date.now=()=>time;window.Laya.Browser.now=()=>time;});await sleep(650);
+   assert.equal((await state(page)).running,false,'unverified manual receipt timeout still safely stops new sends');
    await approveAndStart(page);assert.equal((await state(page)).running,false);assert.equal((await state(page)).manualPending.length,1);
   }finally{await stopAndClose(page)}
   page=await readyPage(browser);

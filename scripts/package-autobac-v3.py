@@ -30,10 +30,13 @@ root_files.add('AUTOBAC-V3.2.22-DEPLOY.md')
 root_files.add('AUTOBAC-V3.2.23-DEPLOY.md')
 root_files |= {'AUTOBAC-V3.2.24-DEPLOY.md', 'LATEST-BASELINE.json'}
 root_files.add('AUTOBAC-V3.2.25-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.26-DEPLOY.md')
+root_files.add('AUTOBAC-V3.2.27-DEPLOY.md')
 source_dirs = {'app', 'components', 'lib', 'server', 'shared', 'constants', 'hooks', 'scripts', 'drizzle'}
 validated_tests = {'user-presence.test.ts','user-presence-client.test.ts','admin-simple-records.test.ts','dg-risk-inputs.test.ts','dg-settings-records.test.ts','dg-settings-recorder.test.ts','dg-preflight-risk.test.ts','dg-risk-acknowledgements.test.ts','dg-usage-history.test.ts','dg-bet-summary.test.ts','dg-homescreen.test.ts','dg-session-timer.test.ts','dg-only-release.test.ts','page-zoom-lock.test.ts','mt-foreground-navigation.test.ts','dg-mobile-v329.test.ts','dg-operation-capture.test.ts','poker-and-access.test.ts','dg-mobile-native.test.ts','dg-mobile-installer.test.ts','game-layout-mode.test.ts','mobile-launch.test.ts','dg-official-turnover.test.ts','mt-official-turnover.test.ts','doubling-staking.test.ts','mt-game-proxy.test.ts','mt-frame-installer.test.ts','dg-frame-installer.test.ts','mt-dg-rules.test.ts','mt-recommendation-adapter.test.ts','mt-road-feed.test.ts','dg-singlepage.test.ts','dg-panel-data.test.ts','dg-limit-check.test.ts','dg-risk-limits.test.ts','dg-table-selection.test.ts'}
 validated_tests |= {'dg-manual-ledger.test.ts', 'dg-poker-tracker.test.ts'}
-validated_tests |= {'dg-card-frame.test.ts', 'dg-poker-real-data.test.ts'}
+validated_tests |= {'dg-card-frame.test.ts', 'dg-poker-real-data.test.ts', 'poker-strategy-isolation.test.ts'}
+validated_tests |= {'dg-manual-receipt-evidence.test.ts'}
 source_extensions = {'.ts', '.tsx', '.js', '.cjs', '.mjs', '.css', '.sql', '.md', '.py', '.sh'}
 validated_tests |= {'dg-usage-recorder.test.ts', 'dg-usage-records.test.ts', 'admin-audit-reader.test.ts'}
 required_source_data = {'lib/sa-table-labels.json'}
@@ -87,6 +90,8 @@ for name in root_files:
         entries[name] = file.read_bytes()
 
 required = [
+    "AUTOBAC-V3.2.27-DEPLOY.md", "tests/dg-manual-receipt-evidence.test.ts", "scripts/test-dg-manual-receipt-hold.cjs",
+    "AUTOBAC-V3.2.26-DEPLOY.md", "lib/poker-hand.ts", "lib/parity-strategy.ts", "lib/four-formula-strategy.ts", "tests/poker-strategy-isolation.test.ts",
     "AUTOBAC-V3.2.25-DEPLOY.md", "shared/dg-card-frame.ts", "server/dg-card-bridge.ts", "tests/dg-card-frame.test.ts", "tests/dg-poker-real-data.test.ts", "tests/fixtures/dg-card-results-anonymous.json", "scripts/test-dg-passive-card-memory.cjs", "scripts/test-dg-card-bridge.cjs",
     "AUTOBAC-V3.2.24-DEPLOY.md", "LATEST-BASELINE.json", "tests/dg-poker-tracker.test.ts", "scripts/test-dg-poker-strategies.cjs",
     "AUTOBAC-V3.2.23-DEPLOY.md", "scripts/test-dg-initial-settings.cjs",

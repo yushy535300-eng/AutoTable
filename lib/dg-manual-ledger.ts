@@ -177,7 +177,7 @@ export class DgManualLedger {
     }
     return { bet, accepted: true };
   }
-  settle(msg: any) {
+  settle(msg: any, allowOpaquePreReceipt = false) {
     if (Number(msg?.cmd) !== 1007 || Number(msg.codeId ?? 0) !== 0) return null;
     const tableId = identifiers(msg?.tableId), gameNo = identifiers(msg?.gameNo), pnl = msg?.dList?.[1];
     if (!tableId || !gameNo || typeof pnl !== 'number' || !Number.isFinite(pnl)) return null;
@@ -188,10 +188,12 @@ export class DgManualLedger {
       bet.pnl = pnl; bet.state = 'settled'; bet.settledAt = Date.now();
       return { bet, pnl, settled: true };
     }
-    // Before acceptance, only a parsed single outgoing command can be held for
-    // event reordering. Opaque or mismatched-receipt orders remain unknown and
-    // must never acquire P/L from an otherwise matching table-round event.
-    if (bet.state !== 'sent' || bet.amount === null) return null;
+    // Pre-acceptance evidence is memory-only and cannot change displayed P/L.
+    // The console may opt in ONLY for one freshly observed opaque native request;
+    // a formal matching receipt is still mandatory before this evidence is applied.
+    const parsedSent = bet.state === 'sent' && bet.amount !== null;
+    const opaqueAwaiting = allowOpaquePreReceipt && bet.state === 'unknown' && bet.amount === null;
+    if (!parsedSent && !opaqueAwaiting) return null;
     const staged = this.stagedSettlements.get(key);
     if (staged && staged.pnl !== pnl) {
       // Conflicting pre-acknowledgement events cannot be attributed safely.

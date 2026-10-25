@@ -14092,7 +14092,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     };
   }
 
-  // lib/poker-strategies.ts
+  // lib/poker-hand.ts
   var rankNames = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
   function cardRank(value) {
     if (typeof value === "string" && rankNames.includes(value.toUpperCase().trim())) return value.toUpperCase().trim();
@@ -14139,21 +14139,41 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     const hand = { player, banker };
     return completePoker(hand) ? hand : null;
   }
-  function pokerDecision(strategy, hand) {
+
+  // lib/parity-strategy.ts
+  function parityPokerDecision(hand) {
     if (!hand || !completePoker(hand)) return { ok: false, reason: "\u7B49\u5F85\u540C\u684C\u540C\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u5BE6\u969B\u724C\u5F35\uFF1B\u4E0D\u4EE5\u724C\u8DEF\u6216\u9EDE\u6578\u4EE3\u66FF" };
     const all = [...hand.player, ...hand.banker];
-    if (strategy === "parity") {
-      const values = all.map((c) => rankNames.indexOf(c) + 1), total = values.reduce((a, b) => a + b, 0);
-      const first = Math.floor(total / 10) + total % 10, terminal = first >= 10 ? first % 10 : first;
-      const side = terminal % 2 === 0 ? "\u838A" : "\u9592";
-      return { ok: true, side, confidence: 0, reason: `\u7D42\u503C\u5947\u5076\uFF1A\u9592 ${handPoint(hand.player)}\uFF0F\u838A ${handPoint(hand.banker)} \u9EDE\uFF1B${all.join("\u3001")}\uFF1B\u724C\u9762\u7E3D\u548C ${total} \u2192 ${first} \u2192 ${terminal}\uFF1B${terminal % 2 === 0 ? "\u5076\u838A" : "\u5947\u9592"}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u52DD\u7387\uFF09` };
-    }
+    const values = all.map((c) => rankNames.indexOf(c) + 1), total = values.reduce((a, b) => a + b, 0);
+    const first = Math.floor(total / 10) + total % 10, terminal = first >= 10 ? first % 10 : first;
+    const side = terminal % 2 === 0 ? "\u838A" : "\u9592";
+    return { ok: true, side, confidence: 0, reason: `\u7D42\u503C\u5947\u5076\uFF1A\u9592 ${handPoint(hand.player)}\uFF0F\u838A ${handPoint(hand.banker)} \u9EDE\uFF1B${all.join("\u3001")}\uFF1B\u724C\u9762\u7E3D\u548C ${total} \u2192 ${first} \u2192 ${terminal}\uFF1B${terminal % 2 === 0 ? "\u5076\u838A" : "\u5947\u9592"}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u52DD\u7387\uFF09` };
+  }
+
+  // lib/four-formula-strategy.ts
+  function resolveFourFormulaVotes(votes) {
+    if (!Array.isArray(votes) || votes.length !== 4 || !votes.every((v) => v === "\u838A" || v === "\u9592"))
+      return { ok: false, reason: "\u56DB\u5F0F\u7D50\u679C\u672A\u5B8C\u6574\u6838\u5C0D\uFF0C\u4E0D\u4E0B\u6CE8" };
+    const bankers = votes.filter((v) => v === "\u838A").length, players = votes.filter((v) => v === "\u9592").length;
+    if (bankers === players) return { ok: false, reason: "\u540C\u7968\u89C0\u671B\uFF0C\u4E0D\u4E0B\u6CE8", bankers, players };
+    return { ok: true, side: bankers > players ? "\u838A" : "\u9592", bankers, players };
+  }
+  function fourFormulaPokerDecision(hand) {
+    if (!hand || !completePoker(hand)) return { ok: false, reason: "\u7B49\u5F85\u540C\u684C\u540C\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u5BE6\u969B\u724C\u5F35\uFF1B\u4E0D\u4EE5\u724C\u8DEF\u6216\u9EDE\u6578\u4EE3\u66FF" };
+    const all = [...hand.player, ...hand.banker];
     const sum = all.reduce((n, c) => n + baccaratValue(c), 0), pb = handPoint(hand.banker), pp = handPoint(hand.player);
     const votes = [sum % 3 === 0 ? "\u838A" : "\u9592", sum % 2 === 0 ? "\u838A" : "\u9592", pb * pp % 2 === 0 ? "\u838A" : "\u9592", (pb + pp) % 2 === 0 ? "\u838A" : "\u9592"];
-    const bankers = votes.filter((v) => v === "\u838A").length;
-    const reason = `V38\u56DB\u5F0F\uFF1A\u9592 ${pp}\uFF0F\u838A ${pb} \u9EDE\uFF1B\u724C\u503C\u7E3D\u548C ${sum}\uFF1BA ${votes[0]}\uFF0FB ${votes[1]}\uFF0F\u4E58 ${votes[2]}\uFF0F\u52A0 ${votes[3]}\uFF1B\u838A ${bankers}\uFF1A\u9592 ${4 - bankers}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u5269\u724C\u6A5F\u7387\uFF09`;
-    if (bankers === 2) return { ok: false, reason: reason + "\uFF1B\u540C\u7968\u89C0\u671B\uFF0C\u4E0D\u4E0B\u6CE8" };
-    return { ok: true, side: bankers > 2 ? "\u838A" : "\u9592", confidence: Math.max(bankers, 4 - bankers) * 25, reason };
+    const result = resolveFourFormulaVotes(votes);
+    const reason = `V38\u56DB\u5F0F\uFF1A\u9592 ${pp}\uFF0F\u838A ${pb} \u9EDE\uFF1B\u724C\u503C\u7E3D\u548C ${sum}\uFF1BA ${votes[0]}\uFF0FB ${votes[1]}\uFF0F\u4E58 ${votes[2]}\uFF0F\u52A0 ${votes[3]}\uFF1B\u838A ${result.bankers}\uFF1A\u9592 ${result.players}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u5269\u724C\u6A5F\u7387\uFF09`;
+    if (!result.ok) return { ok: false, reason: reason + "\uFF1B" + result.reason };
+    return { ok: true, side: result.side, confidence: Math.max(result.bankers, result.players) * 25, reason };
+  }
+
+  // lib/poker-strategies.ts
+  function pokerDecision(strategy, hand) {
+    if (strategy === "parity") return parityPokerDecision(hand);
+    if (strategy === "counting") return fourFormulaPokerDecision(hand);
+    return { ok: false, reason: "\u672A\u9078\u64C7\u6709\u6548\u724C\u5F35\u7B56\u7565\uFF0C\u4E0D\u4EE5\u5176\u4ED6\u7B56\u7565\u4EE3\u66FF" };
   }
   var DG_CARD_MEMORY_COMPACT_MS = 20 * 6e4;
   function createDgPokerTracker(now = () => Date.now()) {
@@ -14573,7 +14593,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       return { bet, accepted: true };
     }
-    settle(msg) {
+    settle(msg, allowOpaquePreReceipt = false) {
       if (Number(msg?.cmd) !== 1007 || Number(msg.codeId ?? 0) !== 0) return null;
       const tableId = identifiers(msg?.tableId), gameNo = identifiers(msg?.gameNo), pnl = msg?.dList?.[1];
       if (!tableId || !gameNo || typeof pnl !== "number" || !Number.isFinite(pnl)) return null;
@@ -14586,7 +14606,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         bet.settledAt = Date.now();
         return { bet, pnl, settled: true };
       }
-      if (bet.state !== "sent" || bet.amount === null) return null;
+      const parsedSent = bet.state === "sent" && bet.amount !== null;
+      const opaqueAwaiting = allowOpaquePreReceipt && bet.state === "unknown" && bet.amount === null;
+      if (!parsedSent && !opaqueAwaiting) return null;
       const staged = this.stagedSettlements.get(key);
       if (staged && staged.pnl !== pnl) {
         this.stagedSettlements.delete(key);
@@ -16754,7 +16776,9 @@ ${DG_MOBILE_LAYOUT_CSS}
     let selected = /* @__PURE__ */ new Set(), status = "\u505C\u6B62\uFF1A\u5148\u8B80\u53D6 DG \u55AE\u9801\u591A\u684C\u8CC7\u6599";
     let socket = null, account = null;
     let walletPlayer = null;
-    let nativeBetKey = "", originalSend = null, sendObserver = null;
+    const nativeToolPackets = /* @__PURE__ */ new WeakSet();
+    let originalSend = null, sendObserver = null;
+    const manualAwaitingReceipt = /* @__PURE__ */ new Set();
     const owner = {}, logs = [], contexts = /* @__PURE__ */ new Map();
     let persistKey = "";
     let compact = true, reportPeriod = "today", reportPage = 0, reportTab = "bets";
@@ -17052,6 +17076,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       ledger.state = new DgBetLedger(savedLedger ?? scopedMemory).state;
       manualLedger.state = new DgManualLedger(savedManual ?? scopedManual).state;
       manualLedger.markReloadUnresolved();
+      manualAwaitingReceipt.clear();
       try {
         usageHistory.load(JSON.parse(localStorage.getItem(persistKey + ".usage.v1") ?? "null"));
       } catch {
@@ -17065,7 +17090,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       sendObserver = function(msg, ...args) {
         if (Number(msg?.cmd) === 6) {
           const key = `${msg.tableId}:${msg.gameNo}`;
-          if (nativeBetKey !== key) {
+          if (!nativeToolPackets.has(msg)) {
             const before = manualLedger.snapshot(), observed = manualLedger.observeSent(msg);
             const bet = ledger.state.bets.find((b) => b.key === key && !["aborted", "rejected"].includes(b.state));
             if (bet) {
@@ -17075,10 +17100,13 @@ ${DG_MOBILE_LAYOUT_CSS}
               }
               manualLedger.markAttributionUncertain(key);
             }
+            if (observed?.created && observed.unknown && !bet) manualAwaitingReceipt.add(key);
+            else if (observed?.duplicate || bet) manualAwaitingReceipt.delete(key);
             let result;
             try {
               result = originalSend.call(this, msg, ...args);
             } catch (error46) {
+              manualAwaitingReceipt.delete(key);
               manualLedger.state = new DgManualLedger(before).state;
               if (bet) {
                 persist();
@@ -17089,8 +17117,10 @@ ${DG_MOBILE_LAYOUT_CSS}
             if (observed || bet) {
               persist();
               if (bet) stop("\u5075\u6E2C\u540C\u5C40\u4EBA\u5DE5\u984D\u5916\u4E0B\u6CE8\uFF1B\u672C\u7B46\u640D\u76CA\u4E0D\u80FD\u55AE\u7368\u6838\u5C0D\uFF0C\u505C\u6B62\u914D\u6CE8\u63A8\u9032");
-              else if (observed?.unknown && running) stop(observed.duplicate && observed.bet.attributionUncertain ? "\u5075\u6E2C\u540C\u5C40\u7B2C\u4E8C\u7B46\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF1B\u6B78\u5C6C\u5F85\u6838\uFF0C\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u5F8C\u7E8C\u7D50\u7B97\u63A8\u7B97" : "\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u91D1\u984D\u672A\u80FD\u6838\u5C0D\uFF1B\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\uFF0F\u7D50\u7B97\u4E8B\u4EF6");
-              else if (observed?.created) log(`${observed.bet.tableId}\uFF5C${observed.bet.gameNo}\uFF5C\u5DF2\u89C0\u5BDF\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF1B\u7B49\u5F85\u5E73\u53F0\u63A5\u53D7\u56DE\u8986`);
+              else if (observed?.unknown && observed.bet.state === "unknown" && running) {
+                if (isManualReceiptAwaiting(observed.bet)) log("\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\u56DE\u8986\uFF1B\u66AB\u7DE9\u65B0\u9001\u55AE\uFF0C\u78BA\u8A8D\u5F8C\u7E7C\u7E8C");
+                else stop(observed.duplicate && observed.bet.attributionUncertain ? "\u5075\u6E2C\u540C\u5C40\u7B2C\u4E8C\u7B46\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF1B\u6B78\u5C6C\u5F85\u6838\uFF0C\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u5F8C\u7E8C\u7D50\u7B97\u63A8\u7B97" : "\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u91D1\u984D\u672A\u80FD\u6838\u5C0D\uFF1B\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\uFF0F\u7D50\u7B97\u4E8B\u4EF6");
+              } else if (observed?.created) log(`${observed.bet.tableId}\uFF5C${observed.bet.gameNo}\uFF5C\u5DF2\u89C0\u5BDF\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF1B\u7B49\u5F85\u5E73\u53F0\u63A5\u53D7\u56DE\u8986`);
             }
             return result;
           }
@@ -17135,6 +17165,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       }
       const manualReceipt = manualLedger.receipt(msg);
       if (manualReceipt) {
+        manualAwaitingReceipt.delete(manualReceipt.bet.key);
         persist();
         if ("settled" in manualReceipt && manualReceipt.settled) recordManualSettlement(manualReceipt.bet, manualReceipt.pnl);
         else {
@@ -17155,7 +17186,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         window.dispatchEvent(new CustomEvent("dg-singlepage-settlement", { detail: { ...settled.bet, nextLevel: settled.nextLevel } }));
         window.setTimeout(() => official.refresh(true), 800);
       }
-      const manualSettled = manualLedger.settle(msg);
+      const manualSettled = manualLedger.settle(msg, isManualReceiptAwaiting(manualLedger.get(`${msg?.tableId}:${msg?.gameNo}`)));
       if (manualSettled && "settled" in manualSettled && manualSettled.settled) recordManualSettlement(manualSettled.bet, manualSettled.pnl);
     }
     function migrateSingleChain() {
@@ -17197,14 +17228,28 @@ ${DG_MOBILE_LAYOUT_CSS}
     function roundPnl() {
       return automatedRoundPnl() + manualRoundPnl();
     }
+    function isManualReceiptAwaiting(bet) {
+      const age = bet ? Date.now() - bet.createdAt : -1;
+      return !!bet && manualAwaitingReceipt.has(bet.key) && bet.state === "unknown" && bet.amount === null && !bet.attributionUncertain && age >= 0 && age <= 12e3;
+    }
+    function manualReceiptHoldReason() {
+      return manualLedger.pending().some(isManualReceiptAwaiting) ? "\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\u56DE\u8986\uFF1B\u66AB\u7DE9\u65B0\u9001\u55AE\uFF0C\u78BA\u8A8D\u5F8C\u7E7C\u7E8C" : null;
+    }
     function manualRiskBlockReason() {
-      const mixed = manualLedger.pending().filter((b) => b.attributionUncertain).length;
+      const pending = manualLedger.pending(), mixed = pending.filter((b) => b.attributionUncertain).length;
       if (mixed) return `\u6709 ${mixed} \u7B46\u540C\u5C40\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u6B78\u5C6C\u5F85\u6838\uFF1B\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u5F8C\u7E8C\u7D50\u7B97\u63A8\u7B97`;
-      const exposure = manualLedger.riskExposure();
-      return exposure.unknownCount ? `\u6709 ${exposure.unknownCount} \u7B46\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u91D1\u984D\u672A\u80FD\u6838\u5C0D\uFF1B\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\uFF0F\u7D50\u7B97\u4E8B\u4EF6` : null;
+      const unknown2 = pending.filter((b) => (b.state === "unknown" || b.amount === null) && !isManualReceiptAwaiting(b)).length;
+      return unknown2 ? `\u6709 ${unknown2} \u7B46\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u91D1\u984D\u672A\u80FD\u6838\u5C0D\uFF1B\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\uFF0F\u7D50\u7B97\u4E8B\u4EF6` : null;
     }
     function riskPending() {
       return [...ledger.pending(), ...manualLedger.riskExposure().known];
+    }
+    function knownManualExposureWait(amount2, ownReservation) {
+      if (manualRiskBlockReason() || !manualLedger.riskExposure().known.length || riskStopReason(roundPnl(), riskLimits)) return false;
+      return nextStakeRiskCheck(roundPnl(), riskLimits, ledger.pending(), amount2, ownReservation).ok;
+    }
+    function manualExposureWaitText(reason) {
+      return "\u4EBA\u5DE5\u5F85\u7D50\u7B97\u66AB\u5360\u98A8\u96AA\u984D\u5EA6\uFF1B" + reason.replace(/；停止新增下注$/, "\uFF1B\u7D50\u7B97\u5F8C\u7E7C\u7E8C");
     }
     function unacknowledgedFunds() {
       return ledger.pending().filter((b) => b.state !== "accepted").reduce((sum, b) => sum + b.amount, 0) + manualLedger.riskExposure().known.reduce((sum, b) => sum + b.amount, 0);
@@ -17234,8 +17279,17 @@ ${DG_MOBILE_LAYOUT_CSS}
         stop(manualRisk);
         return;
       }
+      const receiptHold = manualReceiptHoldReason();
+      if (receiptHold) {
+        waitTable(card, receiptHold);
+        return;
+      }
       const riskPreflight = nextStakeRiskCheck(roundPnl(), riskLimits, riskPending(), amount2);
       if (!riskPreflight.ok) {
+        if (knownManualExposureWait(amount2)) {
+          waitTable(card, manualExposureWaitText(riskPreflight.reason));
+          return;
+        }
         stop(riskPreflight.reason);
         return;
       }
@@ -17262,10 +17316,23 @@ ${DG_MOBILE_LAYOUT_CSS}
         if (!running || disposed || token !== epoch || document.hidden || String(card.gameInfo.gameNo) !== gameNo || !ready(card) || !sameSession(card)) throw new Error("\u5DF2\u505C\u6B62\u3001\u5C40\u865F\u6539\u8B8A\u6216\u505C\u6B62\u63A5\u53D7\u4E0B\u6CE8");
         const manualRisk2 = manualRiskBlockReason();
         if (manualRisk2) throw new Error(manualRisk2);
+        const receiptHold2 = manualReceiptHoldReason();
+        if (receiptHold2) {
+          const error46 = new Error(receiptHold2);
+          error46.manualExposureWait = true;
+          throw error46;
+        }
         const riskReason = riskStopReason(roundPnl(), riskLimits);
         if (riskReason) throw new Error(riskReason);
         const exposure = nextStakeRiskCheck(roundPnl(), riskLimits, riskPending(), amount2, bet.key);
-        if (!exposure.ok) throw new Error(exposure.reason);
+        if (!exposure.ok) {
+          if (knownManualExposureWait(amount2, bet.key)) {
+            const error46 = new Error(manualExposureWaitText(exposure.reason));
+            error46.manualExposureWait = true;
+            throw error46;
+          }
+          throw new Error(exposure.reason);
+        }
         const check2 = checkDgAmount(card, amount2);
         if (!check2.ok) throw new Error(check2.reason);
       }
@@ -17302,14 +17369,20 @@ ${DG_MOBILE_LAYOUT_CSS}
         ledger.submit(bet);
         persist();
         budget.remaining -= amount2;
-        nativeBetKey = bet.key;
+        nativeToolPackets.add(packet);
         try {
           socket.sendData(packet);
         } finally {
-          nativeBetKey = "";
+          nativeToolPackets.delete(packet);
         }
         log(`${tableId}\uFF5C${gameNo}\uFF5C\u5DF2\u76F4\u63A5\u50B3\u9001 cmd 6\uFF1A${side} ${money(amount2)}\uFF1B\u7B49\u5F85\u5E73\u53F0\u63A5\u53D7\u56DE\u8986`);
       } catch (error46) {
+        if (error46?.manualExposureWait && bet.state === "reserved") {
+          ledger.abort(bet);
+          persist();
+          waitTable(card, String(error46.message));
+          return;
+        }
         if (bet.state === "reserved") {
           ledger.abort(bet);
         } else ledger.uncertain(bet);
@@ -17352,7 +17425,10 @@ ${DG_MOBILE_LAYOUT_CSS}
           persist();
           stop("\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u63A5\u53D7\u56DE\u8986\u903E\u6642\uFF1B\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\u4E26\u4FDD\u7559\u5F85\u6838\u7D00\u9304");
         }
-        if (running && b.state === "accepted" && Date.now() - (b.acceptedAt ?? b.createdAt) > 18e4) stop("\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\u7D50\u7B97\u903E\u6642\uFF1B\u5DF2\u505C\u6B62\uFF0C\u4FDD\u7559\u5F85\u7D50\u7B97\u5E33\u672C");
+        if (running && b.state === "accepted" && Date.now() - (b.acceptedAt ?? b.createdAt) > 18e4) {
+          const card = boards(all).find((c) => String(c.tableId) === b.tableId);
+          if (card) waitTable(card, "\u4EBA\u5DE5\u5DF2\u63A5\u53D7\u6CE8\u55AE\u7D50\u7B97\u5EF6\u9072\uFF1B\u4FDD\u7559\u672C\u91D1\u8207\u5F85\u7D50\u7B97\uFF0C\u4E0D\u91CD\u9001\u3001\u4E0D\u5047\u7D50\u7B97");
+        }
       }
       if (!running || !socket || document.hidden) return;
       if (manualRiskBlockReason()) {
@@ -17364,6 +17440,7 @@ ${DG_MOBILE_LAYOUT_CSS}
         stop(riskReason);
         return;
       }
+      if (manualReceiptHoldReason()) return;
       const cards = boards(all).filter((c) => selected.has(String(c.tableId)));
       const budget = { remaining: Math.max(0, Number(account?.balance ?? 0) - unacknowledgedFunds()) };
       const current = epoch;
@@ -17780,7 +17857,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       if (manualPending.length) {
         const unknown2 = manualPending.filter((b) => b.state === "unknown").length, accepted = manualPending.filter((b) => b.state === "accepted").length, mixed = manualPending.filter((b) => b.attributionUncertain).length;
         focusTableText = "\u4EBA\u5DE5\u539F\u751F\u4E0B\u6CE8\uFF1A";
-        focusPhaseText = mixed ? `${mixed} \u7B46\u540C\u5C40\u6B78\u5C6C\u5F85\u6838\uFF0C\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8\uFF0C\u4E0D\u4EE5\u7D50\u7B97\u63A8\u7B97` : unknown2 ? `${unknown2} \u7B46\u5F85\u6838\u5C0D\uFF0C\u5DF2\u505C\u6B62\u65B0\u589E\u4E0B\u6CE8` : accepted ? `${accepted} \u7B46\u5DF2\u63A5\u53D7\uFF0C\u7B49\u5F85\u7D50\u7B97` : `${manualPending.length} \u7B46\u7B49\u5F85\u63A5\u53D7\u56DE\u8986`;
+        focusPhaseText = !running ? `\u81EA\u52D5\u5DF2\u505C\u6B62\uFF5C${userStatus(status)}` : mixed ? `${mixed} \u7B46\u540C\u5C40\u6B78\u5C6C\u5F85\u6838\uFF0C\u66AB\u7DE9\u65B0\u589E\u4E0B\u6CE8` : unknown2 ? `${unknown2} \u7B46\u7B49\u5F85\u6B63\u5F0F\u63A5\u53D7\uFF0C\u66AB\u7DE9\u65B0\u9001\u55AE` : accepted ? `${accepted} \u7B46\u5DF2\u63A5\u53D7\uFF0C\u7B49\u5F85\u7D50\u7B97` : `${manualPending.length} \u7B46\u7B49\u5F85\u63A5\u53D7\u56DE\u8986`;
       }
       if (q("focus-table").textContent !== focusTableText) q("focus-table").textContent = focusTableText;
       if (q("focus-phase").textContent !== focusPhaseText) q("focus-phase").textContent = focusPhaseText;
