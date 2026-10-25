@@ -280,7 +280,8 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   }
   function onMessage(msg:any){
     if(disposed)return;
-    queueMicrotask(()=>{if(!disposed)pokerTracker.observe(boards());});
+    pokerTracker.observePacket(msg,boards());
+    queueMicrotask(()=>{if(!disposed){const cards=boards();pokerTracker.observePacket(msg,cards);pokerTracker.observe(cards);}});
     const receipt=ledger.receipt(msg);
     if(receipt){
       persist();log(`${receipt.bet.tableId}｜${receipt.bet.gameNo}｜${receipt.accepted?'平台已接受下注':'平台拒絕或金額不符，未標示成功'}｜${receipt.bet.side} ${money(receipt.bet.amount)}`);
@@ -488,7 +489,7 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
     const id=String(card.tableId),gameNo=String(card.gameInfo?.gameNo??'');
     if(!gameNo||!ready(card)||!sameSession(card))return false;
     if(ledger.state.bets.some(b=>b.key===`${id}:${gameNo}`)||manualLedger.has(`${id}:${gameNo}`))return false;
-    if(roads(card).filter(x=>x!=='和').length<3)return false;
+    if(provider!=='counting'&&provider!=='parity'&&roads(card).filter(x=>x!=='和').length<3)return false;
     if(Object.values(card.betMoneyTmp).some(v=>Number(v)!==0)||Object.values(card.betMoneyTrue).some(v=>Number(v)!==0))return false;
     const amount=stakeAmount(id);
     return amount<=maxStake&&checkDgAmount(card,amount).ok;
@@ -496,7 +497,11 @@ declare global {interface Window {Laya:any;__DG_SINGLEPAGE__?:any;__DG_LEDGER_ST
   function autoScan(cards:any[]){
     if(manualSelection||(!q('rooms-page').hidden&&!running))return;
     const pending=ledger.pending().map(b=>b.tableId);
-    const eligible=cards.filter(openForAuto).map(c=>String(c.tableId));
+    const eligibleCards=cards.filter(openForAuto);
+    // Completed formulas get available slots first; incomplete tables remain
+    // displayable with their own wait reason and can never bypass execute().
+    if(provider==='counting'||provider==='parity')eligibleCards.sort((a,b)=>Number(!!strategyFor(b).side)-Number(!!strategyFor(a).side));
+    const eligible=eligibleCards.map(c=>String(c.tableId));
     const ids=running?selectOpenDgTables(eligible,pending,roomCount as '1'|'3'|'5'|'all'):
       syncDgTables(eligible.length?eligible:cards.map(c=>String(c.tableId)),[...selected],pending,roomCount as '1'|'3'|'5'|'all');
     if(ids.length===selected.size&&ids.every(id=>selected.has(id)))return;

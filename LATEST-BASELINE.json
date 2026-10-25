@@ -1,0 +1,7 @@
+{
+  "baseline": "User latest AutoTable-main.zip",
+  "received": "2026-10-25",
+  "sha256": "42e40d3338c2ad271cd72acdb43b92876699a5a25dac2b6d5c460670954f2581",
+  "rule": "Use this uploaded source as authoritative; do not merge previous AutoBac versions without explicit reason.",
+  "scope": "Authoritative uploaded baseline; modifications limited to poker formula data routing and focused regression coverage."
+}

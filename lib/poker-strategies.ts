@@ -49,12 +49,12 @@ export function pokerDecision(strategy: PokerStrategy, hand: PokerHand | null): 
     const values=all.map(c=>rankNames.indexOf(c)+1),total=values.reduce((a,b)=>a+b,0);
     const first=Math.floor(total/10)+total%10,terminal=first>=10?first%10:first;
     const side=terminal%2===0?'莊':'閒';
-    return {ok:true,side,confidence:0,reason:`終值奇偶：${all.join('、')}；牌面總和 ${total} → ${first} → ${terminal}；${terminal%2===0?'偶莊':'奇閒'}（原公式，非勝率）`};
+    return {ok:true,side,confidence:0,reason:`終值奇偶：閒 ${handPoint(hand.player)}／莊 ${handPoint(hand.banker)} 點；${all.join('、')}；牌面總和 ${total} → ${first} → ${terminal}；${terminal%2===0?'偶莊':'奇閒'}（原公式，非勝率）`};
   }
   const sum=all.reduce((n,c)=>n+baccaratValue(c),0),pb=handPoint(hand.banker),pp=handPoint(hand.player);
   const votes=[sum%3===0?'莊':'閒',sum%2===0?'莊':'閒',(pb*pp)%2===0?'莊':'閒',(pb+pp)%2===0?'莊':'閒'];
   const bankers=votes.filter(v=>v==='莊').length;
-  const reason=`V38四式：A ${votes[0]}／B ${votes[1]}／乘 ${votes[2]}／加 ${votes[3]}；莊 ${bankers}：閒 ${4-bankers}（原公式，非剩牌機率）`;
+  const reason=`V38四式：閒 ${pp}／莊 ${pb} 點；牌值總和 ${sum}；A ${votes[0]}／B ${votes[1]}／乘 ${votes[2]}／加 ${votes[3]}；莊 ${bankers}：閒 ${4-bankers}（原公式，非剩牌機率）`;
   if(bankers===2)return {ok:false,reason:reason+'；同票觀望，不下注'};
   return {ok:true,side:bankers>2?'莊':'閒',confidence:Math.max(bankers,4-bankers)*25,reason};
 }
@@ -65,27 +65,51 @@ export function mtPreviousPoker(table: any, shoe: string, nextRound: number): Po
 }
 export function createDgPokerTracker(){
   const snapshots=new Map<string,{shoe:string;round:number;hand:PokerHand;fingerprint:string;conflict:boolean}>();
+  function record(id:string,shoe:string,round:number,hand:PokerHand){
+    const previous=snapshots.get(id),fingerprint=JSON.stringify(hand);
+    // Delayed same-shoe packets must not erase a more recent verified hand.
+    if(previous&&previous.shoe===shoe&&round<previous.round)return;
+    if(previous&&previous.shoe===shoe&&previous.round===round){
+      if(previous.fingerprint!==fingerprint)previous.conflict=true;
+      return;
+    }
+    snapshots.set(id,{shoe,round,hand,fingerprint,conflict:false});
+  }
   function observe(cards:any[]){
     for(const card of cards){
-      const id=String(card.tableId||''),g=card.gameInfo||{},shoe=g.shoeId==null?'':String(g.shoeId),round=Number(g.playId);
+      const id=String(card.tableId||''),g=card.gameInfo||{},shoe=g.shoeId==null?'':String(g.shoeId),round=Number(g.playId),state=Number(g.stateId);
       if(!id||!shoe||!Number.isSafeInteger(round)||round<1)continue;
       const old=snapshots.get(id);
-      if(old&&(old.shoe!==shoe||round<old.round))snapshots.delete(id);
-      // Never relabel a retained previous poker blob as this betting round.
-      if(Number(g.stateId)===1)continue;
-      const hand=dgPokerHand(g.poker);if(!hand)continue;
-      const fingerprint=JSON.stringify(hand),previous=snapshots.get(id);
-      if(previous&&previous.shoe===shoe&&previous.round===round){
-        if(previous.fingerprint!==fingerprint)previous.conflict=true;
-        continue;
-      }
-      snapshots.set(id,{shoe,round,hand,fingerprint,conflict:false});
+      if(old&&old.shoe!==shoe)snapshots.delete(id);
+      // Never relabel retained previous poker as the current betting round.
+      if(!Number.isFinite(state)||state===1)continue;
+      const hand=dgPokerHand(g.poker);if(hand)record(id,shoe,round,hand);
+    }
+  }
+  /** PublicBean.table is evidenced in dg-live.ts and PublicBeanProto.proto.
+   * Read only explicit result identifiers and poker; never retain raw packets.
+   * Raw Table.state is NOT assumed to have the runtime stateId encoding.
+   */
+  function observePacket(packet:any,cards:any[]){
+    if(!Array.isArray(packet?.table)||Number(packet.codeId??0)!==0)return;
+    for(const raw of packet.table.slice(0,256)){
+      if(!raw||raw.tableId==null||raw.shoeId==null||raw.playId==null||raw.poker==null)continue;
+      const id=String(raw.tableId),shoe=String(raw.shoeId),round=Number(raw.playId);
+      if(!id||!shoe||!Number.isSafeInteger(round)||round<1)continue;
+      const card=cards.find(c=>String(c?.tableId)===id&&String(c?.gameInfo?.shoeId??'')===shoe);
+      if(!card)continue;
+      const current=Number(card.gameInfo.playId),state=Number(card.gameInfo.stateId);
+      if(!Number.isSafeInteger(current)||!(round===current-1||(round===current&&Number.isFinite(state)&&state!==1)))continue;
+      const hand=dgPokerHand(raw.poker);if(hand)record(id,shoe,round,hand);
     }
   }
   function decision(card:any,strategy:PokerStrategy):PokerDecision{
     const g=card?.gameInfo||{},old=snapshots.get(String(card?.tableId||''));
-    if(!old||old.conflict||old.shoe!==String(g.shoeId??'')||old.round!==Number(g.playId)-1)return pokerDecision(strategy,null);
+    if(!old)return {ok:false,reason:'等待此桌上一局完整牌張／開牌推送；尚未取得可核對資料'};
+    if(old.conflict)return {ok:false,reason:'此桌同靴同局牌張資料衝突，暫不下注'};
+    if(old.shoe!==String(g.shoeId??''))return {ok:false,reason:'此桌已換靴，等待新靴上一局完整牌張'};
+    if(old.round!==Number(g.playId)-1)return {ok:false,reason:'此桌牌張局號不是當前上一局，等待相符開牌資料'};
     return pokerDecision(strategy,old.hand);
   }
-  return {observe,decision};
+  return {observe,observePacket,decision};
 }

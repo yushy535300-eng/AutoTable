@@ -1,5 +1,5 @@
 {
-  "version": "3.2.23-initial-settings-editable",
+  "version": "3.2.24-poker-strategy-data-routing",
   "header": "fixed-single-row; official-line-platform-reconnect-help-logout; no-collapse-no-dropdown",
   "bettingEngineBaseline": "3.2.2-dg-mobile-v329",
   "platforms": [
@@ -97,5 +97,7 @@
   "summaryMetrics": "combined-settled-pnl-wins-losses-zero-and-decisive-hit-rate",
   "stakingSelection": "idle-multitable-selectable; nonflat-forces-single; pending-running-lock",
   "successSummary": "latest-confirmed-table-amount-only; no-stale-success-for-new-submission",
-  "settingsEditing": "stopped-settings-editable; running-busy-locked; unresolved-start-blocked"
+  "settingsEditing": "stopped-settings-editable; running-busy-locked; unresolved-start-blocked",
+  "uploadedBaseline": "AutoTable-main.zip / 2026-10-25",
+  "pokerStrategies": "original-parity-and-v38; complete-same-table-same-shoe-previous-round; no-three-road-gate; final-direction-first"
 }

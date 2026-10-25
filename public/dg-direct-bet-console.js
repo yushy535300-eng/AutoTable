@@ -14144,40 +14144,60 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       const values = all.map((c) => rankNames.indexOf(c) + 1), total = values.reduce((a, b) => a + b, 0);
       const first = Math.floor(total / 10) + total % 10, terminal = first >= 10 ? first % 10 : first;
       const side = terminal % 2 === 0 ? "\u838A" : "\u9592";
-      return { ok: true, side, confidence: 0, reason: `\u7D42\u503C\u5947\u5076\uFF1A${all.join("\u3001")}\uFF1B\u724C\u9762\u7E3D\u548C ${total} \u2192 ${first} \u2192 ${terminal}\uFF1B${terminal % 2 === 0 ? "\u5076\u838A" : "\u5947\u9592"}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u52DD\u7387\uFF09` };
+      return { ok: true, side, confidence: 0, reason: `\u7D42\u503C\u5947\u5076\uFF1A\u9592 ${handPoint(hand.player)}\uFF0F\u838A ${handPoint(hand.banker)} \u9EDE\uFF1B${all.join("\u3001")}\uFF1B\u724C\u9762\u7E3D\u548C ${total} \u2192 ${first} \u2192 ${terminal}\uFF1B${terminal % 2 === 0 ? "\u5076\u838A" : "\u5947\u9592"}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u52DD\u7387\uFF09` };
     }
     const sum = all.reduce((n, c) => n + baccaratValue(c), 0), pb = handPoint(hand.banker), pp = handPoint(hand.player);
     const votes = [sum % 3 === 0 ? "\u838A" : "\u9592", sum % 2 === 0 ? "\u838A" : "\u9592", pb * pp % 2 === 0 ? "\u838A" : "\u9592", (pb + pp) % 2 === 0 ? "\u838A" : "\u9592"];
     const bankers = votes.filter((v) => v === "\u838A").length;
-    const reason = `V38\u56DB\u5F0F\uFF1AA ${votes[0]}\uFF0FB ${votes[1]}\uFF0F\u4E58 ${votes[2]}\uFF0F\u52A0 ${votes[3]}\uFF1B\u838A ${bankers}\uFF1A\u9592 ${4 - bankers}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u5269\u724C\u6A5F\u7387\uFF09`;
+    const reason = `V38\u56DB\u5F0F\uFF1A\u9592 ${pp}\uFF0F\u838A ${pb} \u9EDE\uFF1B\u724C\u503C\u7E3D\u548C ${sum}\uFF1BA ${votes[0]}\uFF0FB ${votes[1]}\uFF0F\u4E58 ${votes[2]}\uFF0F\u52A0 ${votes[3]}\uFF1B\u838A ${bankers}\uFF1A\u9592 ${4 - bankers}\uFF08\u539F\u516C\u5F0F\uFF0C\u975E\u5269\u724C\u6A5F\u7387\uFF09`;
     if (bankers === 2) return { ok: false, reason: reason + "\uFF1B\u540C\u7968\u89C0\u671B\uFF0C\u4E0D\u4E0B\u6CE8" };
     return { ok: true, side: bankers > 2 ? "\u838A" : "\u9592", confidence: Math.max(bankers, 4 - bankers) * 25, reason };
   }
   function createDgPokerTracker() {
     const snapshots = /* @__PURE__ */ new Map();
+    function record2(id, shoe, round, hand) {
+      const previous = snapshots.get(id), fingerprint = JSON.stringify(hand);
+      if (previous && previous.shoe === shoe && round < previous.round) return;
+      if (previous && previous.shoe === shoe && previous.round === round) {
+        if (previous.fingerprint !== fingerprint) previous.conflict = true;
+        return;
+      }
+      snapshots.set(id, { shoe, round, hand, fingerprint, conflict: false });
+    }
     function observe(cards) {
       for (const card of cards) {
-        const id = String(card.tableId || ""), g = card.gameInfo || {}, shoe = g.shoeId == null ? "" : String(g.shoeId), round = Number(g.playId);
+        const id = String(card.tableId || ""), g = card.gameInfo || {}, shoe = g.shoeId == null ? "" : String(g.shoeId), round = Number(g.playId), state = Number(g.stateId);
         if (!id || !shoe || !Number.isSafeInteger(round) || round < 1) continue;
         const old = snapshots.get(id);
-        if (old && (old.shoe !== shoe || round < old.round)) snapshots.delete(id);
-        if (Number(g.stateId) === 1) continue;
+        if (old && old.shoe !== shoe) snapshots.delete(id);
+        if (!Number.isFinite(state) || state === 1) continue;
         const hand = dgPokerHand(g.poker);
-        if (!hand) continue;
-        const fingerprint = JSON.stringify(hand), previous = snapshots.get(id);
-        if (previous && previous.shoe === shoe && previous.round === round) {
-          if (previous.fingerprint !== fingerprint) previous.conflict = true;
-          continue;
-        }
-        snapshots.set(id, { shoe, round, hand, fingerprint, conflict: false });
+        if (hand) record2(id, shoe, round, hand);
+      }
+    }
+    function observePacket(packet, cards) {
+      if (!Array.isArray(packet?.table) || Number(packet.codeId ?? 0) !== 0) return;
+      for (const raw of packet.table.slice(0, 256)) {
+        if (!raw || raw.tableId == null || raw.shoeId == null || raw.playId == null || raw.poker == null) continue;
+        const id = String(raw.tableId), shoe = String(raw.shoeId), round = Number(raw.playId);
+        if (!id || !shoe || !Number.isSafeInteger(round) || round < 1) continue;
+        const card = cards.find((c) => String(c?.tableId) === id && String(c?.gameInfo?.shoeId ?? "") === shoe);
+        if (!card) continue;
+        const current = Number(card.gameInfo.playId), state = Number(card.gameInfo.stateId);
+        if (!Number.isSafeInteger(current) || !(round === current - 1 || round === current && Number.isFinite(state) && state !== 1)) continue;
+        const hand = dgPokerHand(raw.poker);
+        if (hand) record2(id, shoe, round, hand);
       }
     }
     function decision(card, strategy) {
       const g = card?.gameInfo || {}, old = snapshots.get(String(card?.tableId || ""));
-      if (!old || old.conflict || old.shoe !== String(g.shoeId ?? "") || old.round !== Number(g.playId) - 1) return pokerDecision(strategy, null);
+      if (!old) return { ok: false, reason: "\u7B49\u5F85\u6B64\u684C\u4E0A\u4E00\u5C40\u5B8C\u6574\u724C\u5F35\uFF0F\u958B\u724C\u63A8\u9001\uFF1B\u5C1A\u672A\u53D6\u5F97\u53EF\u6838\u5C0D\u8CC7\u6599" };
+      if (old.conflict) return { ok: false, reason: "\u6B64\u684C\u540C\u9774\u540C\u5C40\u724C\u5F35\u8CC7\u6599\u885D\u7A81\uFF0C\u66AB\u4E0D\u4E0B\u6CE8" };
+      if (old.shoe !== String(g.shoeId ?? "")) return { ok: false, reason: "\u6B64\u684C\u5DF2\u63DB\u9774\uFF0C\u7B49\u5F85\u65B0\u9774\u4E0A\u4E00\u5C40\u5B8C\u6574\u724C\u5F35" };
+      if (old.round !== Number(g.playId) - 1) return { ok: false, reason: "\u6B64\u684C\u724C\u5F35\u5C40\u865F\u4E0D\u662F\u7576\u524D\u4E0A\u4E00\u5C40\uFF0C\u7B49\u5F85\u76F8\u7B26\u958B\u724C\u8CC7\u6599" };
       return pokerDecision(strategy, old.hand);
     }
-    return { observe, decision };
+    return { observe, observePacket, decision };
   }
 
   // lib/dg-bet-ledger.ts
@@ -16988,8 +17008,13 @@ ${DG_MOBILE_LAYOUT_CSS}
     }
     function onMessage(msg) {
       if (disposed) return;
+      pokerTracker.observePacket(msg, boards());
       queueMicrotask(() => {
-        if (!disposed) pokerTracker.observe(boards());
+        if (!disposed) {
+          const cards = boards();
+          pokerTracker.observePacket(msg, cards);
+          pokerTracker.observe(cards);
+        }
       });
       const receipt = ledger.receipt(msg);
       if (receipt) {
@@ -17309,7 +17334,7 @@ ${DG_MOBILE_LAYOUT_CSS}
       const id = String(card.tableId), gameNo = String(card.gameInfo?.gameNo ?? "");
       if (!gameNo || !ready(card) || !sameSession(card)) return false;
       if (ledger.state.bets.some((b) => b.key === `${id}:${gameNo}`) || manualLedger.has(`${id}:${gameNo}`)) return false;
-      if (roads(card).filter((x) => x !== "\u548C").length < 3) return false;
+      if (provider !== "counting" && provider !== "parity" && roads(card).filter((x) => x !== "\u548C").length < 3) return false;
       if (Object.values(card.betMoneyTmp).some((v) => Number(v) !== 0) || Object.values(card.betMoneyTrue).some((v) => Number(v) !== 0)) return false;
       const amount2 = stakeAmount(id);
       return amount2 <= maxStake && checkDgAmount(card, amount2).ok;
@@ -17317,7 +17342,9 @@ ${DG_MOBILE_LAYOUT_CSS}
     function autoScan(cards) {
       if (manualSelection || !q("rooms-page").hidden && !running) return;
       const pending = ledger.pending().map((b) => b.tableId);
-      const eligible = cards.filter(openForAuto).map((c) => String(c.tableId));
+      const eligibleCards = cards.filter(openForAuto);
+      if (provider === "counting" || provider === "parity") eligibleCards.sort((a, b) => Number(!!strategyFor(b).side) - Number(!!strategyFor(a).side));
+      const eligible = eligibleCards.map((c) => String(c.tableId));
       const ids = running ? selectOpenDgTables(eligible, pending, roomCount) : syncDgTables(eligible.length ? eligible : cards.map((c) => String(c.tableId)), [...selected], pending, roomCount);
       if (ids.length === selected.size && ids.every((id) => selected.has(id))) return;
       selected = new Set(ids);
