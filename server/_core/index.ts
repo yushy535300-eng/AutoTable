@@ -1,3 +1,5 @@
+import {registerAgentContext} from "../program-access";
+import {ensureWhitelistTables} from "../whitelist";
 import {registerUserPresence} from "../user-presence";
 import {readRiskTrackerIdentity} from "../risk-acknowledgements";
 import "dotenv/config";
@@ -40,6 +42,8 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   app.use(express.json({ limit: "5mb" }));
+  registerAgentContext(app,{getPool,ensureWhitelist:ensureWhitelistTables,appId:"autobac"});
+  app.get("/agent-context.js",(_req,res)=>res.sendFile(path.resolve(process.cwd(),"public/agent-context.js")));
   app.use(express.urlencoded({ limit: "5mb", extended: true }));
 
   // DG stays on its existing same-session foreground proxy. Archived MT routes

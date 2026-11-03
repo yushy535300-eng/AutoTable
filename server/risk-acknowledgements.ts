@@ -1,3 +1,4 @@
+import {checkProgram} from './program-access';
 import { createHash } from 'node:crypto';
 import { DG_RISK_STATEMENT } from '../shared/dg-risk-statement';
 
@@ -84,5 +85,6 @@ export async function readRiskTrackerIdentity(db: Database, sessionId: string): 
   const row = (await db.query(`SELECT s.platform, s.username FROM tracker_sessions s
     JOIN tz_whitelist w ON UPPER(w.platform)=UPPER(s.platform) AND LOWER(w.username)=LOWER(s.username)
     WHERE s.session_id=$1 AND w.enabled=TRUE AND (w.expires_at IS NULL OR w.expires_at>NOW()) LIMIT 1`, [sessionId])).rows[0];
+  if(row&&!await checkProgram(db,row.username,row.platform,"autobac"))return null;
   return row ? { platform: String(row.platform), username: String(row.username) } : null;
 }
