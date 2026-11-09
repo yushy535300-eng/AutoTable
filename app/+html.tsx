@@ -14,7 +14,7 @@ export default function RootHtml({ children }: PropsWithChildren) {
       <link rel="apple-touch-icon" sizes="180x180" href="/autobac-auto-v329-180.png" />
       <link rel="icon" type="image/png" sizes="32x32" href="/autobac-auto-v329-32.png" />
       <link rel="manifest" href="/manifest-v329.webmanifest" />
-      <script src="/agent-context.js?v=3" defer />
+      <script src="/agent-context.js?v=4" defer />
       <script src="/ofa-login-device.js?v=1" defer />
       <ScrollViewStyleReset />
     </head>
