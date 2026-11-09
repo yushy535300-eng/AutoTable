@@ -15,7 +15,7 @@ export default function RootHtml({ children }: PropsWithChildren) {
       <link rel="icon" type="image/png" sizes="32x32" href="/autobac-auto-v329-32.png" />
       <link rel="manifest" href="/manifest-v329.webmanifest" />
       <script src="/agent-context.js?v=6" defer />
-      <script src="/ofa-login-device.js?v=1" defer />
+      <script src="/ofa-login-device.js?v=2" defer />
       <ScrollViewStyleReset />
     </head>
     <body>{children}</body>
