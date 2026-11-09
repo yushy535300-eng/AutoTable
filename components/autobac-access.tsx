@@ -1,5 +1,5 @@
 import { AutoBacLogo } from './autobac-logo';
-import { createElement } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
@@ -10,11 +10,44 @@ type AccessProps = {
   onUsername: (value: string) => void; onPassword: (value: string) => void; onTogglePassword: () => void; onSubmit: () => void;
 };
 
+
+function useAgentThreadsProfile() {
+  const [profile, setProfile] = useState({ name: brand.creatorName as string, handle: brand.threadsHandle as string });
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const query = new URLSearchParams(window.location.search);
+    let agent = query.get('agent');
+    try { agent ||= window.sessionStorage.getItem('scarab.agent.entry'); } catch {}
+    if (!agent) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch('/api/agent-context?agent=' + encodeURIComponent(agent!), { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!active || !data?.active) return;
+        const name = String(data.links?.threadsName || '').trim() || 'MT工程師';
+        let handle = brand.threadsHandle as string;
+        if (data.links?.threads) {
+          const parsed = decodeURIComponent(new URL(data.links.threads).pathname.split('/').filter(Boolean)[0] || '');
+          if (/^@[A-Za-z0-9_.]+$/.test(parsed)) handle = parsed;
+        }
+        setProfile({ name, handle });
+      } catch { /* Do not replace branding with unverified content. */ }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 30000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, []);
+  return profile;
+}
+
 /** Original 480px access-card geometry and information, restyled without adding marketing sections. */
 export function AutoBacAccess(props: AccessProps) {
   const { width } = useWindowDimensions();
   const desktop = width >= 1000;
   const narrow = width < 360;
+  const agentThreads = useAgentThreadsProfile();
   return <View style={s.page}>
     {Platform.OS === 'web' ? createElement('video', {
       src: '/poker.mp4', autoPlay: true, muted: true, defaultMuted: true, playsInline: true, preload: 'auto', controls: false,
@@ -42,8 +75,8 @@ export function AutoBacAccess(props: AccessProps) {
           <View style={s.heroDivider} />
           <View style={[s.threadsCard, !desktop && s.threadsCardMobile]}>
             <View style={s.threadsHead}><View style={s.threadsLogo}><FontAwesome6 name="threads" size={24} color="#e8e9df" /></View><Text style={s.threadsLabel}>THREADS</Text></View>
-            <Text style={s.threadsName}>{brand.creatorName}</Text><Text style={s.threadsAccount}>{brand.threadsHandle}</Text>
-            <Pressable testID="access-threads" accessibilityRole="link" accessibilityLabel={`Threads 作者 ${brand.threadsHandle}`} onPress={() => openBrandLink('threads')} style={({ pressed }) => [s.follow, pressed && s.pressed]}><MaterialIcons name="add" size={16} color="#e4e4cd" /><Text style={s.followText}>FOLLOW</Text></Pressable>
+            <Text style={s.threadsName}>{agentThreads.name}</Text><Text style={s.threadsAccount}>{agentThreads.handle}</Text>
+            <Pressable testID="access-threads" accessibilityRole="link" accessibilityLabel={`Threads 作者 ${agentThreads.handle}`} onPress={() => openBrandLink('threads')} style={({ pressed }) => [s.follow, pressed && s.pressed]}><MaterialIcons name="add" size={16} color="#e4e4cd" /><Text style={s.followText}>FOLLOW</Text></Pressable>
           </View>
         </View>
         <View style={s.divider} />
